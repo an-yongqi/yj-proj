@@ -267,6 +267,11 @@ def main():
     # load model
     if args.net is None:
         args.net = args.model.split('/')[-1]
+        # 模糊匹配：支持剪枝/修改后的模型路径名
+        for known_net in net_choices:
+            if known_net.lower() in args.net.lower():
+                args.net = known_net
+                break
     # assert args.net in net_choices
     args.model_family = args.net.split('-')[0]
     lm = LMClass(args)

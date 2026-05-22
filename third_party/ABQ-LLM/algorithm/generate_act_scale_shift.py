@@ -130,6 +130,7 @@ def parse_args():
     parser.add_argument('--num-samples', type=int, default=128)
     parser.add_argument('--seq-len', type=int, default=2048)
     parser.add_argument("--seed", type=int, default=2, help="Seed for sampling the calibration data.")
+    parser.add_argument("--net", type=str, default=None, help="Override network name for saving act scales/shifts")
     args = parser.parse_args()
     return args
 
@@ -146,7 +147,8 @@ def main():
     seqlen=args.seq_len,
     )
     
-    args.net = args.model.split('/')[-1]
+    if args.net is None:
+        args.net = args.model.split('/')[-1]
     act_scales = get_act_scales(model, dataloader,args.num_samples)
     save_path = os.path.join(args.scales_output_path,f'{args.net}.pt')
     os.makedirs(os.path.dirname(save_path), exist_ok=True)

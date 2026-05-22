@@ -1,15 +1,16 @@
 name: yj-proj
 channels:
-  - pytorch
-  - nvidia
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
   - defaults
-  - conda-forge
 dependencies:
   - python=3.10
-  - pytorch=2.1.2
-  - pytorch-cuda=11.8
   - pip
   - pip:
+    - -i https://pypi.tuna.tsinghua.edu.cn/simple
+    - torch==2.1.0
     - transformers==4.42.4
     - accelerate==0.33.0
     - peft==0.10.0

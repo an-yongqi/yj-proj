@@ -1,0 +1,34 @@
+name: yj-proj
+channels:
+  - pytorch
+  - nvidia
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pytorch=2.1.2
+  - pytorch-cuda=11.8
+  - pip
+  - pip:
+    - transformers==4.42.4
+    - accelerate==0.33.0
+    - peft==0.10.0
+    - datasets==2.20.0
+    - sentencepiece>=0.1.99
+    - lm-eval==0.3.0
+    - nevergrad>=0.11.0
+    - k-means-constrained
+    - scikit-learn
+    - numpy==1.26.4
+    - pandas
+    - tqdm
+    - seaborn
+    - matplotlib
+    - safetensors
+    - einops
+    - protobuf
+    - fuzzywuzzy
+    - python-Levenshtein
+    - rouge
+    - rouge-score
+    - jieba

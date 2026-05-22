@@ -1,0 +1,58 @@
+# yj-proj 路径配置
+# 使用前请根据实际环境修改 model_path
+
+# 基础模型路径
+model_path: "/PATH/TO/Llama-2-7b"
+
+# 输出路径
+output_dir: "outputs"
+pruned_model_dir: "outputs/pruned_models"
+quantized_model_dir: "outputs/quantized_models"
+pruned_quantized_model_dir: "outputs/pruned_quantized_models"
+lora_adapter_dir: "outputs/lora_adapters"
+lora_composed_dir: "outputs/lora_composed"
+eval_result_dir: "outputs/eval_results"
+
+# 数据缓存
+cache_dir: "data/cache"
+
+# 第三方代码路径
+abq_llm_dir: "third_party/ABQ-LLM"
+fang_dir: "third_party/FANG"
+restkv_dir: "third_party/rest-kv"
+lorahub_dir: "third_party/lorahub"
+
+# 评估任务列表
+eval_tasks:
+  - piqa
+  - arc_easy
+  - arc_challenge
+  - boolq
+  - hellaswag
+  - winogrande
+  - openbookqa
+
+# 默认超参
+quantization:
+  wbits: 2
+  abits: 8
+  epochs: 40
+
+pruning:
+  ratio: 0.2
+  method: "noiter_group_weight"
+  num_experts_mlp: 7
+
+lora:
+  rank: 16
+  target_modules:
+    - q_proj
+    - v_proj
+    - k_proj
+    - o_proj
+  max_inference_step: 40
+
+kv_cache:
+  method: "restkv"
+  max_capacity_prompt: 128
+  window_size: 32

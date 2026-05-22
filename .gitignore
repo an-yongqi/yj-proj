@@ -1,0 +1,41 @@
+# Outputs and caches
+outputs/
+data/cache/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.eggs/
+
+# Environment
+.env
+*.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model weights (too large for git)
+*.bin
+*.safetensors
+*.pt
+*.pth
+!third_party/**/*.pt
+!third_party/**/*.pth
+
+# Logs
+*.log
+wandb/
+
+# Jupyter
+.ipynb_checkpoints/

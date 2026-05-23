@@ -7,6 +7,7 @@
 # ============================================================
 
 set -e
+export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 
 # ===== 配置 =====
 MODEL_PATH="${MODEL_PATH:-/PATH/TO/Llama-2-7b}"

@@ -102,8 +102,15 @@ def eval_ppl_wikitext(model, testenc, bs=1, device=None):
 
 def eval_zero_shot(model_name, model, tokenizer, task_list=["boolq","hellaswag","winogrande","arc_challenge","arc_easy","openbookqa"],
         num_fewshot=0, use_accelerate=False, add_special_tokens=False):
+    import sys, os
+    # 使用 ABQ-LLM 自带的 lm_eval（支持 pretrained_model 参数）
+    abq_lm_eval_path = os.path.join(os.path.dirname(__file__), "..", "..", "ABQ-LLM", "algorithm")
+    sys.path.insert(0, abq_lm_eval_path)
+    # 强制重新导入 ABQ 版本的 lm_eval
+    for key in list(sys.modules.keys()):
+        if key.startswith("lm_eval"):
+            del sys.modules[key]
     from lm_eval import tasks, evaluator
-    from lm_eval.models.huggingface import HFLM
 
     def pattern_match(patterns, source_list):
         task_names = set()
@@ -112,20 +119,30 @@ def eval_zero_shot(model_name, model, tokenizer, task_list=["boolq","hellaswag",
                 task_names.add(matching)
         return list(task_names)
     task_names = pattern_match(task_list, tasks.ALL_TASKS)
+    model_args = f"pretrained={model_name},cache_dir=./my_weights"
     limit = None
     if "70b" in model_name or "65b" in model_name:
         limit = 2000
-
-    # 用已有的 model/tokenizer 构造 lm_eval 包装对象
-    lm = HFLM(pretrained=model, tokenizer=tokenizer, batch_size=32)
-
+    if use_accelerate:
+        model_args = f"pretrained={model_name},cache_dir=./my_weights,use_accelerate=True"
     results = evaluator.simple_evaluate(
-        model=lm,
+        model="hf-causal-experimental",
+        model_args=model_args,
         tasks=task_names,
         num_fewshot=num_fewshot,
         batch_size=32,
+        device=None,
         no_cache=True,
         limit=limit,
+        description_dict={},
+        decontamination_ngrams_path=None,
+        check_integrity=False,
+        pretrained_model=model,
+        tokenizer=tokenizer,
+        add_special_tokens=add_special_tokens
     )
+
+    # 恢复 sys.path
+    sys.path.remove(abq_lm_eval_path)
 
     return results

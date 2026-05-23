@@ -141,7 +141,7 @@ def main():
         dataloader_params["worker_init_fn"] = seed_worker
 
     dataloader = DataLoader(train_dataset, **dataloader_params)
-    optimizer = SGD(model.parameters())
+    optimizer = SGD(model.parameters(), lr=0.01)
 
     # validity check
     if not isinstance(model, LlamaForCausalLM):

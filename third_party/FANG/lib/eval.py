@@ -103,7 +103,7 @@ def eval_ppl_wikitext(model, testenc, bs=1, device=None):
 def eval_zero_shot(model_name, model, tokenizer, task_list=["boolq","hellaswag","winogrande","arc_challenge","arc_easy","openbookqa"],
         num_fewshot=0, use_accelerate=False, add_special_tokens=False):
     import sys, os
-    # 使用 ABQ-LLM 自带的 lm_eval（支持 pretrained_model 参数）
+    # 使用 ABQ-LLM 自带的 lm_eval
     abq_lm_eval_path = os.path.join(os.path.dirname(__file__), "..", "..", "ABQ-LLM", "algorithm")
     sys.path.insert(0, abq_lm_eval_path)
     # 强制重新导入 ABQ 版本的 lm_eval
@@ -111,35 +111,31 @@ def eval_zero_shot(model_name, model, tokenizer, task_list=["boolq","hellaswag",
         if key.startswith("lm_eval"):
             del sys.modules[key]
     from lm_eval import tasks, evaluator
+    from lm_eval.models.huggingface import AutoCausalLM
 
-    def pattern_match(patterns, source_list):
-        task_names = set()
-        for pattern in patterns:
-            for matching in fnmatch.filter(source_list, pattern):
-                task_names.add(matching)
-        return list(task_names)
-    task_names = pattern_match(task_list, tasks.ALL_TASKS)
-    model_args = f"pretrained={model_name},cache_dir=./my_weights"
+    task_names = list(task_list)
     limit = None
     if "70b" in model_name or "65b" in model_name:
         limit = 2000
-    if use_accelerate:
-        model_args = f"pretrained={model_name},cache_dir=./my_weights,use_accelerate=True"
+
+    # 构造 lm_eval 包装对象，直接注入已有的 model 和 tokenizer
+    lm = AutoCausalLM.__new__(AutoCausalLM)
+    lm.model = model
+    lm.tokenizer = tokenizer
+    lm.tokenizer.padding_side = "left"
+    lm._batch_size = 32
+    lm._max_length = 2048
+    lm._max_gen_toks = 256
+    lm._add_special_tokens = add_special_tokens
+    lm._config = model.config
+    lm._device = model.device if hasattr(model.device, 'type') else torch.device("cuda:0")
+    lm.vocab_size = model.config.vocab_size
+
     results = evaluator.simple_evaluate(
-        model="hf-causal-experimental",
-        model_args=model_args,
-        tasks=task_names,
+        lm=lm,
+        tasks=",".join(task_names),
         num_fewshot=num_fewshot,
-        batch_size=32,
-        device=None,
-        no_cache=True,
         limit=limit,
-        description_dict={},
-        decontamination_ngrams_path=None,
-        check_integrity=False,
-        pretrained_model=model,
-        tokenizer=tokenizer,
-        add_special_tokens=add_special_tokens
     )
 
     # 恢复 sys.path

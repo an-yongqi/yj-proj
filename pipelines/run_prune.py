@@ -152,7 +152,7 @@ def main():
         "--neuron_indices_file", os.path.join(neuron_dir, "neuron_residual_indices.pt"),
         "--cluster_center_file", os.path.join(cluster_dir, "gate_weights.pt"),
         "--sparsity_allocation_file", sparsity_file,
-        "--eval", "--eval_zero_shot",
+        "--eval_zero_shot",
         "--save_model", args.save_model,
     ]
     run_command(cmd, cwd=FANG_DIR)

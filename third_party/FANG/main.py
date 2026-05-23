@@ -93,8 +93,9 @@ def main():
     if args.eval:
         ppl = eval_ppl(model, tokenizer, device, 'wikitext2')
         print(f"ppl on wikitext {ppl:.2f}")
-        ppl = eval_ppl(model, tokenizer, device, 'ptb')
-        print(f"ppl on ptb {ppl:.2f}")
+        # PTB 数据集需要联网下载，离线环境跳过
+        # ppl = eval_ppl(model, tokenizer, device, 'ptb')
+        # print(f"ppl on ptb {ppl:.2f}")
     if args.eval_zero_shot:
 
         accelerate=False

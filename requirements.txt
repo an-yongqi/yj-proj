@@ -8,6 +8,7 @@ sentencepiece>=0.1.99
 
 # Evaluation
 lm-eval==0.3.0
+omegaconf
 
 # LoRA composition (Nevergrad)
 nevergrad>=0.11.0

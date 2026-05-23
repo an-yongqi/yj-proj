@@ -119,7 +119,9 @@ def eval_zero_shot(model_name, model, tokenizer, task_list=["boolq","hellaswag",
         limit = 2000
 
     # 构造 lm_eval 包装对象，直接注入已有的 model 和 tokenizer
+    from lm_eval.base import CacheHook
     lm = AutoCausalLM.__new__(AutoCausalLM)
+    lm.cache_hook = CacheHook(None)
     lm.model = model
     lm.tokenizer = tokenizer
     lm.tokenizer.padding_side = "left"

@@ -100,9 +100,11 @@ def eval_ppl_wikitext(model, testenc, bs=1, device=None):
 # 2. Lower perplexity indicates better performance of the model.
 # 3. In this script, the perplexity of a language model is evaluated using a specific dataset ('wikitext2').
 
-def eval_zero_shot(model_name, model, tokenizer, task_list=["boolq","hellaswag","winogrande","arc_challenge","arc_easy","openbookqa"], 
+def eval_zero_shot(model_name, model, tokenizer, task_list=["boolq","hellaswag","winogrande","arc_challenge","arc_easy","openbookqa"],
         num_fewshot=0, use_accelerate=False, add_special_tokens=False):
-    from lm_eval import tasks, evaluator 
+    from lm_eval import tasks, evaluator
+    from lm_eval.models.huggingface import HFLM
+
     def pattern_match(patterns, source_list):
         task_names = set()
         for pattern in patterns:
@@ -110,27 +112,20 @@ def eval_zero_shot(model_name, model, tokenizer, task_list=["boolq","hellaswag",
                 task_names.add(matching)
         return list(task_names)
     task_names = pattern_match(task_list, tasks.ALL_TASKS)
-    model_args = f"pretrained={model_name},cache_dir=./my_weights"
-    limit = None 
+    limit = None
     if "70b" in model_name or "65b" in model_name:
         limit = 2000
-    if use_accelerate:
-        model_args = f"pretrained={model_name},cache_dir=./my_weights,use_accelerate=True"
+
+    # 用已有的 model/tokenizer 构造 lm_eval 包装对象
+    lm = HFLM(pretrained=model, tokenizer=tokenizer, batch_size=32)
+
     results = evaluator.simple_evaluate(
-        model="hf-causal-experimental",
-        model_args=model_args,
+        model=lm,
         tasks=task_names,
         num_fewshot=num_fewshot,
         batch_size=32,
-        device=None,
         no_cache=True,
         limit=limit,
-        description_dict={},
-        decontamination_ngrams_path=None,
-        check_integrity=False,
-        pretrained_model=model,
-        tokenizer=tokenizer, 
-        add_special_tokens=add_special_tokens
     )
 
-    return results  
+    return results

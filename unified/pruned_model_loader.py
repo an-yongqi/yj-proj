@@ -218,6 +218,24 @@ def load_pruned_model(
     if unexpected:
         print(f"[load_pruned_model] 警告: 多余 {len(unexpected)} 个权重: {unexpected[:5]}...")
 
+    # Patch 每层的 Attention 参数（num_heads 等）以匹配实际权重
+    print(f"[load_pruned_model] 修正每层 Attention 参数...")
+    head_dim = config.hidden_size // config.num_attention_heads
+    for layer in model.model.layers:
+        attn = layer.self_attn
+        actual_q_out = attn.q_proj.out_features
+        actual_k_out = attn.k_proj.out_features
+        actual_num_heads = actual_q_out // head_dim
+        actual_num_kv_heads = actual_k_out // head_dim
+        if actual_num_heads != attn.num_heads:
+            attn.num_heads = actual_num_heads
+            attn.hidden_size = actual_num_heads * head_dim
+            attn.num_key_value_heads = actual_num_kv_heads
+            attn.num_key_value_groups = actual_num_heads // actual_num_kv_heads
+
+    # 释放 state_dict 节省内存
+    del state_dict
+
     # 移动到 GPU
     if device_map == "auto":
         model = model.cuda()

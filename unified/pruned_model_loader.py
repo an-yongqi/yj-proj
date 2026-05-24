@@ -167,13 +167,17 @@ def load_pruned_model(
         print(f"[load_pruned_model] 使用自定义加载器...")
 
     # 自定义加载
+    print(f"[load_pruned_model] 正在读取权重文件...")
     state_dict = _load_state_dict_from_dir(model_dir)
+    print(f"[load_pruned_model] 读取完成，共 {len(state_dict)} 个参数")
 
     # 用原始 config 创建模型（CPU，不加载权重）
+    print(f"[load_pruned_model] 创建模型骨架...")
     config = AutoConfig.from_pretrained(model_dir)
     model = AutoModelForCausalLM.from_config(config, torch_dtype=torch_dtype)
 
     # 遍历 state_dict，找出维度不匹配的 Linear 层并替换
+    print(f"[load_pruned_model] 替换非均匀维度的 Linear 层...")
     replaced = 0
     for key, tensor in state_dict.items():
         if not key.endswith(".weight"):
@@ -193,9 +197,10 @@ def load_pruned_model(
             _set_module(model, module_path, new_linear)
             replaced += 1
 
-    print(f"[load_pruned_model] 替换了 {replaced} 个 Linear 层的维度")
+    print(f"[load_pruned_model] 替换了 {replaced} 个 Linear 层")
 
     # 加载权重
+    print(f"[load_pruned_model] 加载权重到模型...")
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
     if missing:
         # 过滤掉正常缺失的（如 inv_freq）

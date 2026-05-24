@@ -51,24 +51,21 @@ class QuantLlamaMLP(nn.Module):
 class QuantLlamaAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-    def __init__(self, 
+    def __init__(self,
                  org_module: nn.Module,
                  config: LlamaConfig,
                  args=None):
         super().__init__()
         self.config = config
-        self.hidden_size = config.hidden_size
-        self.num_heads = config.num_attention_heads
-        self.head_dim = self.hidden_size // self.num_heads
-        self.num_key_value_heads = config.num_key_value_heads
+        # 从实际权重推断维度（支持非均匀剪枝）
+        self.head_dim = config.hidden_size // config.num_attention_heads  # head_dim 不变
+        q_out_features = org_module.q_proj.out_features
+        k_out_features = org_module.k_proj.out_features
+        self.num_heads = q_out_features // self.head_dim
+        self.num_key_value_heads = k_out_features // self.head_dim
+        self.hidden_size = self.num_heads * self.head_dim
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
         self.max_position_embeddings = config.max_position_embeddings
-
-        if (self.head_dim * self.num_heads) != self.hidden_size:
-            raise ValueError(
-                f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
-                f" and `num_heads`: {self.num_heads})."
-            )
 
         self.rotary_emb = copy.deepcopy(org_module.rotary_emb)
 
@@ -202,10 +199,12 @@ class QuantLlamaDecoderLayer(nn.Module):
             config=config,
             args=args,
             )
+        # 从实际层推断 intermediate_size（支持非均匀剪枝）
+        actual_intermediate = ori_layer.mlp.gate_proj.out_features
         self.mlp = QuantLlamaMLP(
             org_module=ori_layer.mlp,
             hidden_size=self.hidden_size,
-            intermediate_size=config.intermediate_size,
+            intermediate_size=actual_intermediate,
             hidden_act=config.hidden_act,
             args=args,
         )

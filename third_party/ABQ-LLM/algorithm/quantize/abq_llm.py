@@ -178,6 +178,9 @@ def abqllm(
     fp_inps_2 = copy.deepcopy(inps) # take output of quantization model as input
     attn_fp = torch.zeros([args.nsamples, 2048, 2048]).to(fp_inps.device)
     attention_mask = cache["attention_mask"]
+    # transformers>=4.42 causal mask 多一列，裁剪为 (bs, 1, seq, seq)
+    if attention_mask is not None and attention_mask.shape[-1] > attention_mask.shape[-2]:
+        attention_mask = attention_mask[:, :, :, :attention_mask.shape[-2]]
 
     if attention_mask is not None:
         attention_mask_batch = attention_mask.repeat(args.batch_size,1,1,1) if args.deactive_amp else attention_mask.repeat(args.batch_size,1,1,1).float()

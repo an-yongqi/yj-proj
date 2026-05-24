@@ -114,7 +114,7 @@ def build_model_and_tokenizer(model_name):
     # 尝试使用剪枝模型加载器（处理非均匀维度）
     try:
         import sys
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         sys.path.insert(0, project_root)
         from unified.pruned_model_loader import load_pruned_model
         model, tokenizer = load_pruned_model(model_name)

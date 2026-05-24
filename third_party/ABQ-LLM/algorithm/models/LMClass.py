@@ -30,7 +30,7 @@ class LMClass(BaseLM):
         try:
             import os as _os
             import sys as _sys
-            _proj_root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
+            _proj_root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))))
             _sys.path.insert(0, _proj_root)
             from unified.pruned_model_loader import load_pruned_model
             self.model, _ = load_pruned_model(args.model, torch_dtype=torch.float16, device_map="cpu")

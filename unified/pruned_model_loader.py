@@ -151,72 +151,14 @@ def load_pruned_model(
     """
     tokenizer = AutoTokenizer.from_pretrained(model_dir, use_fast=False)
 
-    # 先尝试标准加载
-    try:
-        model = AutoModelForCausalLM.from_pretrained(
-            model_dir, torch_dtype=torch_dtype, device_map=device_map,
-            low_cpu_mem_usage=True,
-        )
-        model.eval()
-        if not hasattr(model, "seqlen"):
-            model.seqlen = 2048
-        print(f"[load_pruned_model] 标准加载成功")
-        return model, tokenizer
-    except (ValueError, RuntimeError) as e:
-        print(f"[load_pruned_model] 标准加载失败: {e}")
-        print(f"[load_pruned_model] 使用自定义加载器...")
-
-    # 自定义加载
-    print(f"[load_pruned_model] 正在读取权重文件...")
-    state_dict = _load_state_dict_from_dir(model_dir)
-    print(f"[load_pruned_model] 读取完成，共 {len(state_dict)} 个参数")
-
-    # 创建模型骨架（跳过权重初始化，快速且省内存）
-    print(f"[load_pruned_model] 创建模型骨架...")
+    # 使用 ignore_mismatched_sizes 加载（和标准 from_pretrained 一样快）
+    print(f"[load_pruned_model] 加载剪枝模型（ignore_mismatched_sizes）...")
     config = AutoConfig.from_pretrained(model_dir)
-    # 跳过 reset_parameters 避免慢速随机初始化
-    _orig_linear_reset = nn.Linear.reset_parameters
-    _orig_embed_reset = nn.Embedding.reset_parameters
-    nn.Linear.reset_parameters = lambda self: None
-    nn.Embedding.reset_parameters = lambda self: None
-    try:
-        model = AutoModelForCausalLM.from_config(config, torch_dtype=torch_dtype)
-    finally:
-        nn.Linear.reset_parameters = _orig_linear_reset
-        nn.Embedding.reset_parameters = _orig_embed_reset
-
-    # 遍历 state_dict，找出维度不匹配的 Linear 层并替换
-    print(f"[load_pruned_model] 替换非均匀维度的 Linear 层...")
-    replaced = 0
-    for key, tensor in state_dict.items():
-        if not key.endswith(".weight"):
-            continue
-
-        module_path = key[:-7]  # remove ".weight"
-        try:
-            module = _get_module(model, module_path)
-        except (AttributeError, IndexError):
-            continue
-
-        if isinstance(module, nn.Linear) and module.weight.shape != tensor.shape:
-            out_features, in_features = tensor.shape
-            has_bias = module.bias is not None
-            new_linear = nn.Linear(in_features, out_features, bias=has_bias, dtype=torch_dtype)
-            _set_module(model, module_path, new_linear)
-            replaced += 1
-
-    print(f"[load_pruned_model] 替换了 {replaced} 个 Linear 层")
-
-    # 加载权重
-    print(f"[load_pruned_model] 加载权重到模型...")
-    missing, unexpected = model.load_state_dict(state_dict, strict=False)
-    if missing:
-        # 过滤掉正常缺失的（如 inv_freq）
-        real_missing = [k for k in missing if "inv_freq" not in k]
-        if real_missing:
-            print(f"[load_pruned_model] 警告: 缺失 {len(real_missing)} 个权重: {real_missing[:5]}...")
-    if unexpected:
-        print(f"[load_pruned_model] 警告: 多余 {len(unexpected)} 个权重: {unexpected[:5]}...")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_dir, torch_dtype=torch_dtype, device_map=device_map,
+        low_cpu_mem_usage=True,
+        ignore_mismatched_sizes=True,
+    )
 
     # Patch 每层的 Attention 参数（num_heads 等）以匹配实际权重
     print(f"[load_pruned_model] 修正每层 Attention 参数...")
@@ -232,9 +174,6 @@ def load_pruned_model(
             attn.hidden_size = actual_num_heads * head_dim
             attn.num_key_value_heads = actual_num_kv_heads
             attn.num_key_value_groups = actual_num_heads // actual_num_kv_heads
-
-    # 释放 state_dict 节省内存
-    del state_dict
 
     # 移动到 GPU
     if device_map == "auto":

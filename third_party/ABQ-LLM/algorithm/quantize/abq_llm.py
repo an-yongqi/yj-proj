@@ -309,7 +309,7 @@ def abqllm(
                         
                     if not math.isfinite(loss.item()):
                         logger.info("Loss is NAN, stopping training")
-                        pdb.set_trace()
+                        break
                         
                     loss_list.append(loss.detach().cpu())
                     optimizer.zero_grad()

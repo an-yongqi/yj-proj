@@ -119,6 +119,19 @@ def main():
     if args.save_model:
         if not os.path.exists(args.save_model):
             os.makedirs(args.save_model)
+        # 更新 config 以反映剪枝后的实际维度
+        # MLP: gate_proj/up_proj 的 out_features = intermediate_size
+        first_mlp = model.model.layers[0].mlp
+        actual_intermediate = first_mlp.gate_proj.out_features
+        if actual_intermediate != model.config.intermediate_size:
+            print(f"更新 config.intermediate_size: {model.config.intermediate_size} → {actual_intermediate}")
+            model.config.intermediate_size = actual_intermediate
+        # Attention: 检查 num_heads 是否变化
+        first_attn = model.model.layers[0].self_attn
+        actual_hidden = first_attn.o_proj.out_features
+        if actual_hidden != model.config.hidden_size:
+            print(f"更新 config.hidden_size: {model.config.hidden_size} → {actual_hidden}")
+            model.config.hidden_size = actual_hidden
         model.save_pretrained(args.save_model)
         tokenizer.save_pretrained(args.save_model)
     

@@ -151,12 +151,11 @@ def load_pruned_model(
     """
     tokenizer = AutoTokenizer.from_pretrained(model_dir, use_fast=False)
 
-    # 使用 ignore_mismatched_sizes 加载（和标准 from_pretrained 一样快）
-    print(f"[load_pruned_model] 加载剪枝模型（ignore_mismatched_sizes）...")
+    # 先加载到 CPU（避免 meta tensor 问题），再手动移 GPU
+    print(f"[load_pruned_model] 加载剪枝模型到 CPU...")
     config = AutoConfig.from_pretrained(model_dir)
     model = AutoModelForCausalLM.from_pretrained(
-        model_dir, torch_dtype=torch_dtype, device_map=device_map,
-        low_cpu_mem_usage=True,
+        model_dir, torch_dtype=torch_dtype, device_map=None,
         ignore_mismatched_sizes=True,
     )
 
@@ -177,6 +176,7 @@ def load_pruned_model(
 
     # 移动到 GPU
     if device_map == "auto":
+        print(f"[load_pruned_model] 移动模型到 GPU...")
         model = model.cuda()
     model.eval()
 

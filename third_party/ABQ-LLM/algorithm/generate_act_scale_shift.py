@@ -111,6 +111,18 @@ def get_act_shifts(model, dataloader, num_samples=128):
 
 
 def build_model_and_tokenizer(model_name):
+    # 尝试使用剪枝模型加载器（处理非均匀维度）
+    try:
+        import sys
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        sys.path.insert(0, project_root)
+        from unified.pruned_model_loader import load_pruned_model
+        model, tokenizer = load_pruned_model(model_name)
+        sys.path.remove(project_root)
+        return model, tokenizer
+    except Exception:
+        pass
+    # 标准加载
     kwargs = {"torch_dtype": torch.float16, "device_map": "auto"}
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(model_name, **kwargs)

@@ -27,6 +27,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 from unified.model_utils import load_model_and_tokenizer
+from unified.pruned_model_loader import load_pruned_model
 from unified.eval_harness import evaluate_ppl
 
 TASK_LIST = ["piqa", "arc_easy", "arc_challenge", "boolq", "hellaswag", "winogrande", "openbookqa"]
@@ -97,7 +98,7 @@ def evaluate_model(model_path, label, batch_size=4):
     print(f"  模型路径: {model_path}")
     print(f"{'='*60}\n")
 
-    model, tokenizer = load_model_and_tokenizer(model_path)
+    model, tokenizer = load_pruned_model(model_path)
 
     # PPL
     print(">>> 评测 WikiText-2 Perplexity...")

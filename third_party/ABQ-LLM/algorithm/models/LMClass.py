@@ -25,8 +25,21 @@ class LMClass(BaseLM):
         )
 
         self.tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=False,legacy=False)
-        # self.model = AutoModelForCausalLM.from_pretrained(args.model, config=config, device_map='cpu',torch_dtype=config.torch_dtype)
-        self.model = AutoModelForCausalLM.from_pretrained(args.model, config=config, device_map='cpu',torch_dtype=torch.float16)
+        # 尝试使用剪枝模型加载器（处理 FANG 非均匀剪枝维度）
+        _loaded = False
+        try:
+            import os as _os
+            import sys as _sys
+            _proj_root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
+            _sys.path.insert(0, _proj_root)
+            from unified.pruned_model_loader import load_pruned_model
+            self.model, _ = load_pruned_model(args.model, torch_dtype=torch.float16, device_map="cpu")
+            _loaded = True
+            _sys.path.remove(_proj_root)
+        except Exception:
+            pass
+        if not _loaded:
+            self.model = AutoModelForCausalLM.from_pretrained(args.model, config=config, device_map='cpu',torch_dtype=torch.float16)
         self.seqlen = self.model.config.max_position_embeddings
         self.model.eval()
         self.vocab_size = self.tokenizer.vocab_size

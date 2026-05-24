@@ -171,10 +171,11 @@ def load_pruned_model(
     state_dict = _load_state_dict_from_dir(model_dir)
     print(f"[load_pruned_model] 读取完成，共 {len(state_dict)} 个参数")
 
-    # 用原始 config 创建模型（CPU，不加载权重）
-    print(f"[load_pruned_model] 创建模型骨架...")
+    # 在 meta device 上创建模型骨架（不分配实际内存，秒完成）
+    print(f"[load_pruned_model] 创建模型骨架（meta device）...")
     config = AutoConfig.from_pretrained(model_dir)
-    model = AutoModelForCausalLM.from_config(config, torch_dtype=torch_dtype)
+    with torch.device("meta"):
+        model = AutoModelForCausalLM.from_config(config, torch_dtype=torch_dtype)
 
     # 遍历 state_dict，找出维度不匹配的 Linear 层并替换
     print(f"[load_pruned_model] 替换非均匀维度的 Linear 层...")
@@ -183,7 +184,6 @@ def load_pruned_model(
         if not key.endswith(".weight"):
             continue
 
-        # 获取模块路径 (去掉末尾的 .weight)
         module_path = key[:-7]  # remove ".weight"
         try:
             module = _get_module(model, module_path)
@@ -193,15 +193,17 @@ def load_pruned_model(
         if isinstance(module, nn.Linear) and module.weight.shape != tensor.shape:
             out_features, in_features = tensor.shape
             has_bias = module.bias is not None
-            new_linear = nn.Linear(in_features, out_features, bias=has_bias, dtype=torch_dtype)
+            # 在 meta device 上创建占位 Linear（不分配内存）
+            with torch.device("meta"):
+                new_linear = nn.Linear(in_features, out_features, bias=has_bias, dtype=torch_dtype)
             _set_module(model, module_path, new_linear)
             replaced += 1
 
     print(f"[load_pruned_model] 替换了 {replaced} 个 Linear 层")
 
-    # 加载权重
+    # 用 assign=True 直接赋值权重（meta tensor 被真实 tensor 替换）
     print(f"[load_pruned_model] 加载权重到模型...")
-    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    missing, unexpected = model.load_state_dict(state_dict, strict=False, assign=True)
     if missing:
         # 过滤掉正常缺失的（如 inv_freq）
         real_missing = [k for k in missing if "inv_freq" not in k]

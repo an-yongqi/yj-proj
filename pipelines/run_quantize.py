@@ -42,11 +42,13 @@ def main():
     parser.add_argument("--skip_act_scales", action="store_true", help="跳过激活统计生成")
     args = parser.parse_args()
 
-    # 确定 net 名称（两个步骤必须一致）
-    net_name = args.net
-    if net_name is None:
-        # 从模型路径推断，与 main.py 的模糊匹配逻辑保持一致
-        net_name = args.model.rstrip('/').split('/')[-1]
+    # 确定 act_scales 文件名（从模型路径推断）
+    act_scales_name = args.model.rstrip('/').split('/')[-1]
+    # 确定 net 名称（ABQ-LLM 要求从固定列表选，用于模型架构识别）
+    net_name = args.net or "Llama-2-7b"
+    # act_scales/act_shifts 文件路径
+    act_scales_path = os.path.join(ABQ_DIR, "act_scales", f"{act_scales_name}.pt")
+    act_shifts_path = os.path.join(ABQ_DIR, "act_shifts", f"{act_scales_name}.pt")
 
     # Step 1: 生成激活统计
     if not args.skip_act_scales:
@@ -57,7 +59,7 @@ def main():
             sys.executable, "generate_act_scale_shift.py",
             "--model", args.model,
             "--num-samples", str(args.nsamples),
-            "--net", net_name,
+            "--net", act_scales_name,
         ]
         run_command(cmd, cwd=ABQ_DIR)
 
@@ -78,6 +80,8 @@ def main():
         "--save_dir", args.save_dir,
         "--tasks", args.tasks,
         "--net", net_name,
+        "--act-scales", act_scales_path,
+        "--act-shifts", act_shifts_path,
     ]
     run_command(cmd, cwd=ABQ_DIR)
 

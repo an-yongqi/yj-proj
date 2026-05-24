@@ -25,21 +25,14 @@ class LMClass(BaseLM):
         )
 
         self.tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=False,legacy=False)
-        # 尝试使用剪枝模型加载器（处理 FANG 非均匀剪枝维度）
-        _loaded = False
-        try:
-            import os as _os
-            import sys as _sys
-            _proj_root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))))
+        # 使用剪枝模型加载器（处理 FANG 非均匀剪枝维度）
+        import os as _os
+        import sys as _sys
+        _proj_root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))))
+        if _proj_root not in _sys.path:
             _sys.path.insert(0, _proj_root)
-            from unified.pruned_model_loader import load_pruned_model
-            self.model, _ = load_pruned_model(args.model, torch_dtype=torch.float16, device_map="cpu")
-            _loaded = True
-            _sys.path.remove(_proj_root)
-        except Exception:
-            pass
-        if not _loaded:
-            self.model = AutoModelForCausalLM.from_pretrained(args.model, config=config, device_map='cpu',torch_dtype=torch.float16)
+        from unified.pruned_model_loader import load_pruned_model
+        self.model, _ = load_pruned_model(args.model, torch_dtype=torch.float16, device_map="cpu")
         self.seqlen = self.model.config.max_position_embeddings
         self.model.eval()
         self.vocab_size = self.tokenizer.vocab_size

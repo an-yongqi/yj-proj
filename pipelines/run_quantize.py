@@ -42,6 +42,12 @@ def main():
     parser.add_argument("--skip_act_scales", action="store_true", help="跳过激活统计生成")
     args = parser.parse_args()
 
+    # 确定 net 名称（两个步骤必须一致）
+    net_name = args.net
+    if net_name is None:
+        # 从模型路径推断，与 main.py 的模糊匹配逻辑保持一致
+        net_name = args.model.rstrip('/').split('/')[-1]
+
     # Step 1: 生成激活统计
     if not args.skip_act_scales:
         print("=" * 60)
@@ -51,9 +57,8 @@ def main():
             sys.executable, "generate_act_scale_shift.py",
             "--model", args.model,
             "--num-samples", str(args.nsamples),
+            "--net", net_name,
         ]
-        if args.net:
-            cmd.extend(["--net", args.net])
         run_command(cmd, cwd=ABQ_DIR)
 
     # Step 2: W2A8 量化 + 评估
@@ -72,9 +77,8 @@ def main():
         "--lwc", "--let",
         "--save_dir", args.save_dir,
         "--tasks", args.tasks,
+        "--net", net_name,
     ]
-    if args.net:
-        cmd.extend(["--net", args.net])
     run_command(cmd, cwd=ABQ_DIR)
 
     print("\n量化完成！模型保存至:", args.save_dir)

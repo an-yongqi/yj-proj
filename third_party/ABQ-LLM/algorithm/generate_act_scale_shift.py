@@ -111,13 +111,10 @@ def get_act_shifts(model, dataloader, num_samples=128):
 
 
 def build_model_and_tokenizer(model_name):
-    # 尝试使用剪枝模型加载器（处理非均匀维度）
-    import sys
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    if project_root not in sys.path:
-        sys.path.insert(0, project_root)
-    from unified.pruned_model_loader import load_pruned_model
-    model, tokenizer = load_pruned_model(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16, device_map="auto")
+    model.eval()
+    model.seqlen = model.config.max_position_embeddings
     return model, tokenizer
 
 def parse_args():

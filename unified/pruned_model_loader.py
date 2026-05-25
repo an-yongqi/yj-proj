@@ -1,14 +1,9 @@
 """
 加载 FANG 结构化剪枝后的模型
 
-FANG 的结构化剪枝会改变每层的 MLP/Attention 维度，且不同层剪枝比例不同，
-导致标准 from_pretrained 无法加载。
-
-本模块通过以下方式解决:
-1. 加载剪枝后的 state_dict，扫描每层实际维度
-2. 用原始 config 创建模型骨架
-3. 替换维度不匹配的 Linear 层为正确尺寸
-4. 加载实际权重
+支持两种模式:
+1. Mask 模式 (推荐): 剪枝后维度不变，权重置零，直接用 from_pretrained 加载
+2. 物理剪枝模式 (旧): 每层维度不同，需要扫描 state_dict 并替换 Linear 层
 """
 
 import os
@@ -16,6 +11,51 @@ import glob
 import torch
 import torch.nn as nn
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+
+def load_pruned_model_mask(
+    model_dir,
+    torch_dtype=torch.float16,
+    device_map="auto",
+):
+    """
+    加载 mask 模式剪枝的模型（推荐）
+
+    Mask 模式下模型维度不变，直接用 from_pretrained 加载即可。
+
+    Args:
+        model_dir: 剪枝后模型目录
+        torch_dtype: 数据类型
+        device_map: 设备映射
+
+    Returns:
+        (model, tokenizer) 元组
+    """
+    print(f"[load_pruned_model_mask] 加载 mask 剪枝模型: {model_dir}")
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, use_fast=False)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_dir, torch_dtype=torch_dtype, device_map=device_map,
+    )
+    model.eval()
+
+    if not hasattr(model, "seqlen"):
+        model.seqlen = 2048
+
+    # 打印剪枝统计
+    mask_path = os.path.join(model_dir, "pruning_masks.pt")
+    if os.path.exists(mask_path):
+        masks = torch.load(mask_path, map_location="cpu")
+        total_pruned = 0
+        total_neurons = 0
+        for idx in sorted(masks.keys()):
+            mlp_mask = masks[idx]['mlp']
+            attn_mask = masks[idx]['attn']
+            total_pruned += (~mlp_mask).sum().item() + (~attn_mask).sum().item()
+            total_neurons += mlp_mask.numel() + attn_mask.numel()
+        print(f"[load_pruned_model_mask] 剪枝率: {total_pruned}/{total_neurons} = {total_pruned/total_neurons:.1%}")
+
+    print(f"[load_pruned_model_mask] 加载完成")
+    return model, tokenizer
 
 
 def _load_state_dict_from_dir(model_dir):

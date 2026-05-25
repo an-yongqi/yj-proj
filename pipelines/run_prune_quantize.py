@@ -37,6 +37,8 @@ def main():
                         help="跳过剪枝步骤（使用已有剪枝模型）")
     parser.add_argument("--pruned_model_path", type=str, default=None,
                         help="已有剪枝模型路径（配合 --skip_prune 使用）")
+    parser.add_argument("--use_mask", action="store_true", default=False,
+                        help="Mask 模式剪枝: 保持维度不变，直接兼容量化")
     args = parser.parse_args()
 
     pr_int = int(args.pruning_ratio * 100)
@@ -50,13 +52,16 @@ def main():
         print("=" * 60)
         print("  Step 1/2: FANG 结构化剪枝")
         print("=" * 60)
-        run_command([
+        prune_cmd = [
             sys.executable, os.path.join(PROJECT_ROOT, "pipelines", "run_prune.py"),
             "--model", args.model,
             "--pruning_ratio", str(args.pruning_ratio),
             "--nsamples", str(args.nsamples),
             "--save_model", pruned_dir,
-        ])
+        ]
+        if args.use_mask:
+            prune_cmd.append("--use_mask")
+        run_command(prune_cmd)
     else:
         if args.pruned_model_path:
             pruned_dir = args.pruned_model_path

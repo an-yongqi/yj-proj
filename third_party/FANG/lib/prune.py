@@ -18,6 +18,29 @@ metrics = {
 }
 
 
+def _apply_mask_pruning(layer, name, sparse_weights, mask):
+    """Mask 模式剪枝: 将被剪枝的神经元权重置零，保持维度不变。
+
+    Args:
+        layer: decoder layer
+        name: 'self_attn.o_proj' or 'mlp.down_proj'
+        sparse_weights: OBC 校正后的权重矩阵
+        mask: boolean tensor, True = 保留, 已展开到神经元级别
+    """
+    prune_idx = ~mask
+    if name == 'self_attn.o_proj':
+        layer.self_attn.q_proj.weight.data[prune_idx] = 0
+        layer.self_attn.k_proj.weight.data[prune_idx] = 0
+        layer.self_attn.v_proj.weight.data[prune_idx] = 0
+        sparse_weights[:, prune_idx] = 0
+        layer.self_attn.o_proj.weight.data = sparse_weights
+    else:  # mlp.down_proj
+        layer.mlp.up_proj.weight.data[prune_idx] = 0
+        layer.mlp.gate_proj.weight.data[prune_idx] = 0
+        sparse_weights[:, prune_idx] = 0
+        layer.mlp.down_proj.weight.data = sparse_weights
+
+
 def find_layers(module, layers=[nn.Linear], name=''):
     """
     Recursively find the layers of a certain type in a module.
@@ -209,29 +232,35 @@ def ziplm_prune(args, model, tokenizer, device=torch.device("cuda:0")):
                 retain_heads = torch.count_nonzero(mask)
                 mask = mask.repeat_interleave(headsize)
 
-                layer.self_attn.q_proj.weight.data = layer.self_attn.q_proj.weight.data[torch.where(mask)[0]]
-                layer.self_attn.k_proj.weight.data = layer.self_attn.k_proj.weight.data[torch.where(mask)[0]]
-                layer.self_attn.v_proj.weight.data = layer.self_attn.v_proj.weight.data[torch.where(mask)[0]]
+                if getattr(args, 'use_mask', False):
+                    _apply_mask_pruning(layer, name, sparse_weights, mask)
+                else:
+                    layer.self_attn.q_proj.weight.data = layer.self_attn.q_proj.weight.data[torch.where(mask)[0]]
+                    layer.self_attn.k_proj.weight.data = layer.self_attn.k_proj.weight.data[torch.where(mask)[0]]
+                    layer.self_attn.v_proj.weight.data = layer.self_attn.v_proj.weight.data[torch.where(mask)[0]]
 
-                layer.self_attn.q_proj.out_features = mask.sum().item()
-                layer.self_attn.k_proj.out_features = mask.sum().item()
-                layer.self_attn.v_proj.out_features = mask.sum().item()
-                layer.self_attn.o_proj.in_features = mask.sum().item()
-            
-                layer.self_attn.num_heads = retain_heads
-                layer.self_attn.num_key_value_heads = retain_heads
-                layer.self_attn.hidden_size = retain_heads * headsize
-                layer.self_attn.o_proj.weight.data = sparse_weights[:, mask]
+                    layer.self_attn.q_proj.out_features = mask.sum().item()
+                    layer.self_attn.k_proj.out_features = mask.sum().item()
+                    layer.self_attn.v_proj.out_features = mask.sum().item()
+                    layer.self_attn.o_proj.in_features = mask.sum().item()
+
+                    layer.self_attn.num_heads = retain_heads
+                    layer.self_attn.num_key_value_heads = retain_heads
+                    layer.self_attn.hidden_size = retain_heads * headsize
+                    layer.self_attn.o_proj.weight.data = sparse_weights[:, mask]
 
             else:
-                layer.mlp.up_proj.weight.data = layer.mlp.up_proj.weight.data[torch.where(mask)[0]]
-                layer.mlp.gate_proj.weight.data = layer.mlp.gate_proj.weight.data[torch.where(mask)[0]]
-                layer.mlp.up_proj.out_features = mask.sum().item()
-                layer.mlp.gate_proj.out_features = mask.sum().item()
-                layer.mlp.down_proj.in_features = mask.sum().item()  
-                layer.mlp.intermediate_size = mask.sum().item()
-                layer.mlp.down_proj.weight.data = sparse_weights[:, mask]
-            
+                if getattr(args, 'use_mask', False):
+                    _apply_mask_pruning(layer, name, sparse_weights, mask)
+                else:
+                    layer.mlp.up_proj.weight.data = layer.mlp.up_proj.weight.data[torch.where(mask)[0]]
+                    layer.mlp.gate_proj.weight.data = layer.mlp.gate_proj.weight.data[torch.where(mask)[0]]
+                    layer.mlp.up_proj.out_features = mask.sum().item()
+                    layer.mlp.gate_proj.out_features = mask.sum().item()
+                    layer.mlp.down_proj.in_features = mask.sum().item()
+                    layer.mlp.intermediate_size = mask.sum().item()
+                    layer.mlp.down_proj.weight.data = sparse_weights[:, mask]
+
             wrapped_layers[name].reset()
 
         for j in range(args.nsamples):
@@ -309,11 +338,9 @@ def ziplm_noiter(args, model, tokenizer, device=torch.device("cuda:0")):
 
             mask = ~mask
             if name == 'self_attn.o_proj':
-                if layer.self_attn.num_key_value_groups > 1:
-                    sparse_weights[:, ~mask] = 0
-                    layer.self_attn.o_proj.weight.data = sparse_weights
+                if getattr(args, 'use_mask', False) or layer.self_attn.num_key_value_groups > 1:
+                    _apply_mask_pruning(layer, name, sparse_weights, mask)
                 else:
-
                     layer.self_attn.q_proj.weight.data = layer.self_attn.q_proj.weight.data[torch.where(mask)[0]]
                     layer.self_attn.k_proj.weight.data = layer.self_attn.k_proj.weight.data[torch.where(mask)[0]]
                     layer.self_attn.v_proj.weight.data = layer.self_attn.v_proj.weight.data[torch.where(mask)[0]]
@@ -322,21 +349,24 @@ def ziplm_noiter(args, model, tokenizer, device=torch.device("cuda:0")):
                     layer.self_attn.k_proj.out_features = mask.sum().item()
                     layer.self_attn.v_proj.out_features = mask.sum().item()
                     layer.self_attn.o_proj.in_features = mask.sum().item()
-                
+
                     layer.self_attn.num_heads = retain_heads
                     layer.self_attn.num_key_value_heads = retain_heads
                     layer.self_attn.hidden_size = retain_heads * headsize
                     layer.self_attn.o_proj.weight.data = sparse_weights[:, mask]
 
             else:
-                layer.mlp.up_proj.weight.data = layer.mlp.up_proj.weight.data[torch.where(mask)[0]]
-                layer.mlp.gate_proj.weight.data = layer.mlp.gate_proj.weight.data[torch.where(mask)[0]]
-                layer.mlp.up_proj.out_features = mask.sum().item()
-                layer.mlp.gate_proj.out_features = mask.sum().item()
-                layer.mlp.down_proj.in_features = mask.sum().item()  
-                layer.mlp.intermediate_size = mask.sum().item()
-                layer.mlp.down_proj.weight.data = sparse_weights[:, mask]
-            
+                if getattr(args, 'use_mask', False):
+                    _apply_mask_pruning(layer, name, sparse_weights, mask)
+                else:
+                    layer.mlp.up_proj.weight.data = layer.mlp.up_proj.weight.data[torch.where(mask)[0]]
+                    layer.mlp.gate_proj.weight.data = layer.mlp.gate_proj.weight.data[torch.where(mask)[0]]
+                    layer.mlp.up_proj.out_features = mask.sum().item()
+                    layer.mlp.gate_proj.out_features = mask.sum().item()
+                    layer.mlp.down_proj.in_features = mask.sum().item()
+                    layer.mlp.intermediate_size = mask.sum().item()
+                    layer.mlp.down_proj.weight.data = sparse_weights[:, mask]
+
             wrapped_layers[name].reset()
 
         for j in range(args.nsamples):
@@ -423,11 +453,9 @@ def ziplm_noiter_group_prune(args, model, tokenizer, device=torch.device("cuda:0
 
             mask = ~mask
             if name == 'self_attn.o_proj':
-                if layer.self_attn.num_key_value_groups > 1:
-                    sparse_weights[:, ~mask] = 0
-                    layer.self_attn.o_proj.weight.data = sparse_weights
+                if getattr(args, 'use_mask', False) or layer.self_attn.num_key_value_groups > 1:
+                    _apply_mask_pruning(layer, name, sparse_weights, mask)
                 else:
-
                     layer.self_attn.q_proj.weight.data = layer.self_attn.q_proj.weight.data[torch.where(mask)[0]]
                     layer.self_attn.k_proj.weight.data = layer.self_attn.k_proj.weight.data[torch.where(mask)[0]]
                     layer.self_attn.v_proj.weight.data = layer.self_attn.v_proj.weight.data[torch.where(mask)[0]]
@@ -436,21 +464,24 @@ def ziplm_noiter_group_prune(args, model, tokenizer, device=torch.device("cuda:0
                     layer.self_attn.k_proj.out_features = mask.sum().item()
                     layer.self_attn.v_proj.out_features = mask.sum().item()
                     layer.self_attn.o_proj.in_features = mask.sum().item()
-                
+
                     layer.self_attn.num_heads = retain_heads
                     layer.self_attn.num_key_value_heads = retain_heads
                     layer.self_attn.hidden_size = retain_heads * headsize
                     layer.self_attn.o_proj.weight.data = sparse_weights[:, mask]
 
             else:
-                layer.mlp.up_proj.weight.data = layer.mlp.up_proj.weight.data[torch.where(mask)[0]]
-                layer.mlp.gate_proj.weight.data = layer.mlp.gate_proj.weight.data[torch.where(mask)[0]]
-                layer.mlp.up_proj.out_features = mask.sum().item()
-                layer.mlp.gate_proj.out_features = mask.sum().item()
-                layer.mlp.down_proj.in_features = mask.sum().item()  
-                layer.mlp.intermediate_size = mask.sum().item()
-                layer.mlp.down_proj.weight.data = sparse_weights[:, mask]
-            
+                if getattr(args, 'use_mask', False):
+                    _apply_mask_pruning(layer, name, sparse_weights, mask)
+                else:
+                    layer.mlp.up_proj.weight.data = layer.mlp.up_proj.weight.data[torch.where(mask)[0]]
+                    layer.mlp.gate_proj.weight.data = layer.mlp.gate_proj.weight.data[torch.where(mask)[0]]
+                    layer.mlp.up_proj.out_features = mask.sum().item()
+                    layer.mlp.gate_proj.out_features = mask.sum().item()
+                    layer.mlp.down_proj.in_features = mask.sum().item()
+                    layer.mlp.intermediate_size = mask.sum().item()
+                    layer.mlp.down_proj.weight.data = sparse_weights[:, mask]
+
             wrapped_layers[name].reset()
 
         for j in range(args.nsamples):
@@ -578,11 +609,9 @@ def ziplm_noiter_group_weight_prune(args, model, tokenizer, device=torch.device(
 
             mask = ~mask
             if name == 'self_attn.o_proj':
-                if layer.self_attn.num_key_value_groups > 1:
-                    sparse_weights[:, ~mask] = 0
-                    layer.self_attn.o_proj.weight.data = sparse_weights
+                if getattr(args, 'use_mask', False) or layer.self_attn.num_key_value_groups > 1:
+                    _apply_mask_pruning(layer, name, sparse_weights, mask)
                 else:
-
                     layer.self_attn.q_proj.weight.data = layer.self_attn.q_proj.weight.data[torch.where(mask)[0]]
                     layer.self_attn.k_proj.weight.data = layer.self_attn.k_proj.weight.data[torch.where(mask)[0]]
                     layer.self_attn.v_proj.weight.data = layer.self_attn.v_proj.weight.data[torch.where(mask)[0]]
@@ -591,21 +620,24 @@ def ziplm_noiter_group_weight_prune(args, model, tokenizer, device=torch.device(
                     layer.self_attn.k_proj.out_features = mask.sum().item()
                     layer.self_attn.v_proj.out_features = mask.sum().item()
                     layer.self_attn.o_proj.in_features = mask.sum().item()
-                
+
                     layer.self_attn.num_heads = retain_heads
                     layer.self_attn.num_key_value_heads = retain_heads
                     layer.self_attn.hidden_size = retain_heads * headsize
                     layer.self_attn.o_proj.weight.data = sparse_weights[:, mask]
 
             else:
-                layer.mlp.up_proj.weight.data = layer.mlp.up_proj.weight.data[torch.where(mask)[0]]
-                layer.mlp.gate_proj.weight.data = layer.mlp.gate_proj.weight.data[torch.where(mask)[0]]
-                layer.mlp.up_proj.out_features = mask.sum().item()
-                layer.mlp.gate_proj.out_features = mask.sum().item()
-                layer.mlp.down_proj.in_features = mask.sum().item()  
-                layer.mlp.intermediate_size = mask.sum().item()
-                layer.mlp.down_proj.weight.data = sparse_weights[:, mask]
-            
+                if getattr(args, 'use_mask', False):
+                    _apply_mask_pruning(layer, name, sparse_weights, mask)
+                else:
+                    layer.mlp.up_proj.weight.data = layer.mlp.up_proj.weight.data[torch.where(mask)[0]]
+                    layer.mlp.gate_proj.weight.data = layer.mlp.gate_proj.weight.data[torch.where(mask)[0]]
+                    layer.mlp.up_proj.out_features = mask.sum().item()
+                    layer.mlp.gate_proj.out_features = mask.sum().item()
+                    layer.mlp.down_proj.in_features = mask.sum().item()
+                    layer.mlp.intermediate_size = mask.sum().item()
+                    layer.mlp.down_proj.weight.data = sparse_weights[:, mask]
+
             wrapped_layers[name].reset()
 
         for j in range(args.nsamples):

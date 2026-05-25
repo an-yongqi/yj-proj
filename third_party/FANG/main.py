@@ -48,6 +48,8 @@ def main():
     parser.add_argument("--neuron_indices_file", default=None, type=str, help="file containing neuron indices for group")
     parser.add_argument("--cluster_center_file", default=None, type=str, help="file containing cluster centers")
     parser.add_argument("--sparsity_allocation_file", default=None, type=str, help="file containing sparsity ratios")
+    parser.add_argument("--use_mask", action="store_true", default=False,
+                        help="Mask 模式剪枝: 置零而非物理移除，保持模型维度不变，兼容后续量化")
     args = parser.parse_args()
     
     # Setting seeds for reproducibility
@@ -119,19 +121,35 @@ def main():
     if args.save_model:
         if not os.path.exists(args.save_model):
             os.makedirs(args.save_model)
-        # 更新 config 以反映剪枝后的实际维度
-        # MLP: gate_proj/up_proj 的 out_features = intermediate_size
-        first_mlp = model.model.layers[0].mlp
-        actual_intermediate = first_mlp.gate_proj.out_features
-        if actual_intermediate != model.config.intermediate_size:
-            print(f"更新 config.intermediate_size: {model.config.intermediate_size} → {actual_intermediate}")
-            model.config.intermediate_size = actual_intermediate
-        # Attention: 检查 num_heads 是否变化
-        first_attn = model.model.layers[0].self_attn
-        actual_hidden = first_attn.o_proj.out_features
-        if actual_hidden != model.config.hidden_size:
-            print(f"更新 config.hidden_size: {model.config.hidden_size} → {actual_hidden}")
-            model.config.hidden_size = actual_hidden
+        if getattr(args, 'use_mask', False):
+            # Mask 模式: 维度不变，不更新 config
+            # 保存剪枝 mask 信息（从零权重模式中提取）
+            masks = {}
+            for idx, layer in enumerate(model.model.layers):
+                mlp_mask = layer.mlp.gate_proj.weight.data.abs().sum(dim=1) > 0
+                attn_mask = layer.self_attn.q_proj.weight.data.abs().sum(dim=1) > 0
+                mlp_kept = mlp_mask.sum().item()
+                mlp_total = mlp_mask.numel()
+                attn_kept = attn_mask.sum().item()
+                attn_total = attn_mask.numel()
+                masks[idx] = {'mlp': mlp_mask.cpu(), 'attn': attn_mask.cpu()}
+                if mlp_kept < mlp_total or attn_kept < attn_total:
+                    print(f"  layer {idx}: MLP {mlp_kept}/{mlp_total}, Attn {attn_kept}/{attn_total}")
+            mask_path = os.path.join(args.save_model, "pruning_masks.pt")
+            torch.save(masks, mask_path)
+            print(f"Mask 信息保存至 {mask_path}")
+        else:
+            # 物理剪枝模式: 更新 config 以反映剪枝后的实际维度
+            first_mlp = model.model.layers[0].mlp
+            actual_intermediate = first_mlp.gate_proj.out_features
+            if actual_intermediate != model.config.intermediate_size:
+                print(f"更新 config.intermediate_size: {model.config.intermediate_size} → {actual_intermediate}")
+                model.config.intermediate_size = actual_intermediate
+            first_attn = model.model.layers[0].self_attn
+            actual_hidden = first_attn.o_proj.out_features
+            if actual_hidden != model.config.hidden_size:
+                print(f"更新 config.hidden_size: {model.config.hidden_size} → {actual_hidden}")
+                model.config.hidden_size = actual_hidden
         model.save_pretrained(args.save_model)
         tokenizer.save_pretrained(args.save_model)
     

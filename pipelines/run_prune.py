@@ -45,6 +45,8 @@ def main():
                         help="中间文件保存目录（默认 outputs/pruned_models/work）")
     parser.add_argument("--skip_stages", type=str, default="",
                         help="跳过的阶段，逗号分隔 (1,2,3,4)")
+    parser.add_argument("--use_mask", action="store_true", default=False,
+                        help="Mask 模式: 置零而非物理移除，保持维度不变，兼容后续量化")
     args = parser.parse_args()
 
     if args.work_dir is None:
@@ -155,6 +157,8 @@ def main():
         "--eval_zero_shot",
         "--save_model", args.save_model,
     ]
+    if args.use_mask:
+        cmd.append("--use_mask")
     run_command(cmd, cwd=FANG_DIR)
 
     print(f"\n剪枝完成！模型保存至: {args.save_model}")

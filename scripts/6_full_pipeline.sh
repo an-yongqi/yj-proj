@@ -33,6 +33,7 @@ python pipelines/run_full_pipeline.py \
     --wbits "$WBITS" \
     --abits "$ABITS" \
     --lora_r "$LORA_R" \
-    --kv_method "$KV_METHOD"
+    --kv_method "$KV_METHOD" \
+    --use_mask
 
 echo "Done!"

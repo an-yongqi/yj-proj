@@ -77,6 +77,8 @@ def main():
     parser.add_argument("--lora_model", type=str, default=None)
 
     parser.add_argument("--nsamples", type=int, default=128)
+    parser.add_argument("--use_mask", action="store_true", default=False,
+                        help="Mask 模式剪枝: 保持维度不变，直接兼容量化")
 
     args = parser.parse_args()
 
@@ -108,13 +110,16 @@ def main():
         print(f"\n{'='*60}")
         print(f"  Step 1/4: FANG {pr_int}% 结构化剪枝")
         print(f"{'='*60}")
-        run_command([
+        prune_cmd = [
             sys.executable, os.path.join(PROJECT_ROOT, "pipelines", "run_prune.py"),
             "--model", args.model,
             "--pruning_ratio", str(args.pruning_ratio),
             "--nsamples", str(args.nsamples),
             "--save_model", pruned_dir,
-        ])
+        ]
+        if args.use_mask:
+            prune_cmd.append("--use_mask")
+        run_command(prune_cmd)
     else:
         print(f"\n[跳过] Step 1: 使用已有剪枝模型 {pruned_dir}")
 

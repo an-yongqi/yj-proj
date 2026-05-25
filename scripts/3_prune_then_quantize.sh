@@ -34,6 +34,7 @@ python pipelines/run_prune_quantize.py \
     --wbits "$WBITS" \
     --abits "$ABITS" \
     --epochs "$EPOCHS" \
-    --nsamples "$NSAMPLES"
+    --nsamples "$NSAMPLES" \
+    --use_mask
 
 echo "Done!"

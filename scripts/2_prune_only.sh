@@ -28,6 +28,7 @@ cd "$PROJECT_ROOT"
 python pipelines/run_prune.py \
     --model "$MODEL_PATH" \
     --pruning_ratio "$PRUNING_RATIO" \
-    --nsamples "$NSAMPLES"
+    --nsamples "$NSAMPLES" \
+    --use_mask
 
 echo "Done!"

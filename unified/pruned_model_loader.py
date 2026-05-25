@@ -5,15 +5,14 @@ FANG 的结构化剪枝会改变每层的 MLP/Attention 维度，且不同层剪
 导致标准 from_pretrained 无法加载。
 
 本模块通过以下方式解决:
-1. 先用原始 config 创建模型骨架
-2. 扫描 state_dict 确定每层的实际维度
-3. 替换维度不匹配的 Linear 层
+1. 加载剪枝后的 state_dict，扫描每层实际维度
+2. 用原始 config 创建模型骨架
+3. 替换维度不匹配的 Linear 层为正确尺寸
 4. 加载实际权重
 """
 
 import os
 import glob
-import json
 import torch
 import torch.nn as nn
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
@@ -39,18 +38,6 @@ def _load_state_dict_from_dir(model_dir):
     raise FileNotFoundError(f"No model weights found in {model_dir}")
 
 
-def _get_module(model, path):
-    """通过点分路径获取模块"""
-    parts = path.split(".")
-    module = model
-    for p in parts:
-        if p.isdigit():
-            module = module[int(p)]
-        else:
-            module = getattr(module, p)
-    return module
-
-
 def _set_module(model, path, new_module):
     """通过点分路径替换模块"""
     parts = path.split(".")
@@ -68,18 +55,7 @@ def _set_module(model, path, new_module):
 
 
 def scan_dimensions(model_dir):
-    """
-    扫描剪枝后模型的每层实际维度
-
-    Returns:
-        dict: 每层的维度信息
-        {
-            0: {"gate_proj": (out, in), "up_proj": (out, in), "down_proj": (out, in),
-                "q_proj": (out, in), "k_proj": (out, in), "v_proj": (out, in), "o_proj": (out, in)},
-            1: {...},
-            ...
-        }
-    """
+    """扫描剪枝后模型的每层实际维度"""
     state_dict = _load_state_dict_from_dir(model_dir)
     layer_dims = {}
     proj_names = ["gate_proj", "up_proj", "down_proj", "q_proj", "k_proj", "v_proj", "o_proj"]
@@ -87,7 +63,6 @@ def scan_dimensions(model_dir):
     for key, tensor in state_dict.items():
         for proj in proj_names:
             if f".{proj}.weight" in key:
-                # 解析层号: model.layers.X.mlp.gate_proj.weight
                 parts = key.split(".")
                 for i, p in enumerate(parts):
                     if p == "layers" and i + 1 < len(parts):
@@ -138,8 +113,11 @@ def load_pruned_model(
     加载 FANG 结构化剪枝后的模型
 
     处理流程:
-    1. 尝试标准 from_pretrained（如果 config 已正确更新）
-    2. 失败则用自定义加载: 创建骨架 → 替换 Linear 层 → 加载权重
+    1. 加载 state_dict，扫描每层的实际维度
+    2. 创建标准模型骨架
+    3. 替换维度不匹配的 Linear 层
+    4. 用 load_state_dict 加载实际权重
+    5. 修正每层的 attention 参数
 
     Args:
         model_dir: 剪枝后模型目录
@@ -150,18 +128,75 @@ def load_pruned_model(
         (model, tokenizer) 元组
     """
     tokenizer = AutoTokenizer.from_pretrained(model_dir, use_fast=False)
-
-    # 先加载到 CPU（避免 meta tensor 问题），再手动移 GPU
-    print(f"[load_pruned_model] 加载剪枝模型到 CPU...")
     config = AutoConfig.from_pretrained(model_dir)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_dir, torch_dtype=torch_dtype, device_map=None,
-        ignore_mismatched_sizes=True,
-    )
-
-    # Patch 每层的 Attention 参数（num_heads 等）以匹配实际权重
-    print(f"[load_pruned_model] 修正每层 Attention 参数...")
     head_dim = config.hidden_size // config.num_attention_heads
+
+    # Step 1: 加载 state_dict 并扫描实际维度
+    print(f"[load_pruned_model] 加载 state_dict...")
+    state_dict = _load_state_dict_from_dir(model_dir)
+
+    # Step 2: 创建模型骨架（用原始 config，不初始化权重以加速）
+    print(f"[load_pruned_model] 创建模型骨架...")
+    # 临时 monkeypatch 跳过随机初始化
+    original_init = torch.nn.Linear.reset_parameters
+    torch.nn.Linear.reset_parameters = lambda self: None
+    try:
+        model = AutoModelForCausalLM.from_config(config, torch_dtype=torch_dtype)
+    finally:
+        torch.nn.Linear.reset_parameters = original_init
+
+    # Step 3: 扫描 state_dict，替换维度不匹配的 Linear 层
+    print(f"[load_pruned_model] 替换剪枝后的 Linear 层...")
+    proj_names = ["gate_proj", "up_proj", "down_proj", "q_proj", "k_proj", "v_proj", "o_proj"]
+    replaced = 0
+
+    for key, tensor in state_dict.items():
+        # 只处理 Linear 权重
+        if not key.endswith(".weight"):
+            continue
+        is_proj = False
+        for proj in proj_names:
+            if f".{proj}.weight" in key:
+                is_proj = True
+                break
+        if not is_proj:
+            continue
+
+        # 获取对应模块路径 (去掉 .weight)
+        module_path = key[:-len(".weight")]
+        try:
+            module = model
+            for p in module_path.split("."):
+                if p.isdigit():
+                    module = module[int(p)]
+                else:
+                    module = getattr(module, p)
+        except (AttributeError, IndexError):
+            continue
+
+        if not isinstance(module, nn.Linear):
+            continue
+
+        # 检查维度是否匹配
+        ckpt_out, ckpt_in = tensor.shape
+        if module.out_features != ckpt_out or module.in_features != ckpt_in:
+            new_linear = nn.Linear(ckpt_in, ckpt_out, bias=module.bias is not None, dtype=torch_dtype)
+            _set_module(model, module_path, new_linear)
+            replaced += 1
+
+    print(f"[load_pruned_model] 替换了 {replaced} 个 Linear 层")
+
+    # Step 4: 加载权重
+    print(f"[load_pruned_model] 加载权重...")
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    if missing:
+        # 过滤掉 rotary_emb 的 inv_freq（正常缺失）
+        real_missing = [k for k in missing if "inv_freq" not in k]
+        if real_missing:
+            print(f"[load_pruned_model] 警告: {len(real_missing)} 个权重缺失")
+
+    # Step 5: 修正每层 Attention 参数
+    print(f"[load_pruned_model] 修正每层 Attention 参数...")
     for layer in model.model.layers:
         attn = layer.self_attn
         actual_q_out = attn.q_proj.out_features
@@ -174,7 +209,7 @@ def load_pruned_model(
             attn.num_key_value_heads = actual_num_kv_heads
             attn.num_key_value_groups = actual_num_heads // actual_num_kv_heads
 
-    # 移动到 GPU
+    # Step 6: 移动到 GPU
     if device_map == "auto":
         print(f"[load_pruned_model] 移动模型到 GPU...")
         model = model.cuda()

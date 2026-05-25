@@ -1,25 +1,12 @@
 """
-Demo 生成对比: Baseline vs 优化后模型
+Demo 生成对比: Baseline vs 剪枝模型
 
-在多个场景下对比两个模型的生成结果，用于直观展示优化前后的质量差异。
-
-包含 5 类 Demo 场景:
-1. 知识问答 (Knowledge QA)
-2. 常识推理 (Commonsense Reasoning)
-3. 文本续写 (Text Completion)
-4. 指令跟随 (Instruction Following)
-5. 数学推理 (Math Reasoning)
-
-输出:
-- 终端打印对比结果
-- 保存 JSON 到 outputs/demo/demo_results.json
-- 保存 Markdown 到 outputs/demo/demo_results.md
+在多个场景下对比两个模型的生成结果，用于直观展示剪枝前后的质量差异。
 
 用法:
     python pipelines/run_demo.py \
-        --baseline /path/to/Llama-2-7b \
-        --optimized /path/to/pruned-quantized-model \
-        --optimized_name "Prune20%+W2A8"
+        --baseline /path/to/Llama-2-7b-hf \
+        --pruned /path/to/pruned-model
 """
 
 import os
@@ -29,6 +16,7 @@ import time
 import argparse
 import torch
 from datetime import datetime
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
@@ -148,14 +136,27 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=50, temperature=0.0):
     }
 
 
-def run_demo_on_model(model_path, label):
+def load_model(model_path, is_pruned=False):
+    """加载模型，剪枝模型用 load_pruned_model，否则标准加载"""
+    if is_pruned:
+        model, tokenizer = load_pruned_model(model_path)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path, torch_dtype=torch.float16, device_map="auto"
+        )
+        model.eval()
+    return model, tokenizer
+
+
+def run_demo_on_model(model_path, label, is_pruned=False):
     """在一个模型上运行所有 demo 场景"""
     print(f"\n{'='*60}")
     print(f"  加载模型: {label}")
     print(f"  路径: {model_path}")
     print(f"{'='*60}\n")
 
-    model, tokenizer = load_pruned_model(model_path)
+    model, tokenizer = load_model(model_path, is_pruned=is_pruned)
 
     results = []
     for i, demo in enumerate(DEMO_PROMPTS):
@@ -289,20 +290,20 @@ def save_demo_results(baseline_results, optimized_results, baseline_name, optimi
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Demo 生成对比")
+    parser = argparse.ArgumentParser(description="Demo 生成对比: Baseline vs 剪枝模型")
     parser.add_argument("--baseline", type=str, required=True, help="Baseline 模型路径")
-    parser.add_argument("--optimized", type=str, required=True, help="优化后模型路径")
-    parser.add_argument("--baseline_name", type=str, default="LLaMA-2-7B")
-    parser.add_argument("--optimized_name", type=str, default="Prune20%+W2A8")
+    parser.add_argument("--pruned", type=str, required=True, help="剪枝后模型路径")
+    parser.add_argument("--baseline_name", type=str, default="LLaMA-2-7B (Baseline)")
+    parser.add_argument("--pruned_name", type=str, default="LLaMA-2-7B (FANG 20% Pruned)")
     parser.add_argument("--save_dir", type=str,
                         default=os.path.join(PROJECT_ROOT, "outputs", "demo"))
     args = parser.parse_args()
 
-    baseline_results = run_demo_on_model(args.baseline, args.baseline_name)
-    optimized_results = run_demo_on_model(args.optimized, args.optimized_name)
+    baseline_results = run_demo_on_model(args.baseline, args.baseline_name, is_pruned=False)
+    pruned_results = run_demo_on_model(args.pruned, args.pruned_name, is_pruned=True)
 
-    print_side_by_side(baseline_results, optimized_results, args.baseline_name, args.optimized_name)
-    save_demo_results(baseline_results, optimized_results, args.baseline_name, args.optimized_name, args.save_dir)
+    print_side_by_side(baseline_results, pruned_results, args.baseline_name, args.pruned_name)
+    save_demo_results(baseline_results, pruned_results, args.baseline_name, args.pruned_name, args.save_dir)
 
 
 if __name__ == "__main__":

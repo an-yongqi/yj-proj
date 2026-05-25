@@ -1,13 +1,17 @@
 """
 独立评估脚本：对已保存的标准 HF 模型做 PPL + 7 个 Zero-shot 评估
 
-适用于：
-- 量化后的 fake-quant FP16 模型（ABQ-LLM save_pretrained 输出）
-- 原始 baseline 模型
-- 任何标准 HuggingFace CausalLM 模型
+支持两种模型类型:
+- 标准 HF 模型 (baseline, 剪枝后模型): --model /path/to/model
+- ABQ-LLM 量化模型: --model /path/to/base --abq_params /path/to/abq_parameters.pth
 
 用法:
-    python pipelines/run_eval_only.py --model /path/to/model --name "W2A8"
+    # 标准模型
+    python pipelines/run_eval_only.py --model /path/to/model --name "Baseline"
+
+    # 量化模型
+    python pipelines/run_eval_only.py --model /path/to/base_model \
+        --abq_params /path/to/abq_parameters.pth --name "W2A8"
 """
 
 import os
@@ -108,7 +112,11 @@ def eval_zero_shot(model, tokenizer, batch_size=4):
 
 def main():
     parser = argparse.ArgumentParser(description="独立模型评估 (PPL + Zero-shot)")
-    parser.add_argument("--model", type=str, required=True, help="模型路径")
+    parser.add_argument("--model", type=str, required=True, help="模型路径 (或量化模型的基座路径)")
+    parser.add_argument("--abq_params", type=str, default=None,
+                        help="ABQ-LLM abq_parameters.pth 路径 (指定后将加载量化模型)")
+    parser.add_argument("--wbits", type=int, default=2, help="权重量化位数 (仅量化模型)")
+    parser.add_argument("--abits", type=int, default=8, help="激活量化位数 (仅量化模型)")
     parser.add_argument("--name", type=str, default=None, help="模型名称（用于输出）")
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--skip_ppl", action="store_true", help="跳过 PPL 评估")
@@ -118,22 +126,41 @@ def main():
     args = parser.parse_args()
 
     if args.name is None:
-        args.name = args.model.rstrip("/").split("/")[-1]
+        if args.abq_params:
+            args.name = f"W{args.wbits}A{args.abits}"
+        else:
+            args.name = args.model.rstrip("/").split("/")[-1]
 
     print(f"\n{'='*60}")
     print(f"  评估模型: {args.name}")
     print(f"  路径: {args.model}")
+    if args.abq_params:
+        print(f"  量化参数: {args.abq_params}")
     print(f"{'='*60}\n")
 
     # 加载模型
-    print(">>> 加载模型...")
-    tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=False)
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model, torch_dtype=torch.float16, device_map="auto"
-    )
-    model.eval()
+    if args.abq_params:
+        print(">>> 通过 ABQ-LLM 基础设施加载量化模型...")
+        from unified.abq_model_loader import load_abq_quantized_model
+        model, tokenizer = load_abq_quantized_model(
+            base_model_path=args.model,
+            abq_params_path=args.abq_params,
+            wbits=args.wbits,
+            abits=args.abits,
+        )
+    else:
+        print(">>> 加载标准 HF 模型...")
+        tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=False)
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model, torch_dtype=torch.float16, device_map="auto"
+        )
+        model.eval()
 
     results = {"name": args.name, "model_path": args.model, "timestamp": datetime.now().isoformat()}
+    if args.abq_params:
+        results["abq_params"] = args.abq_params
+        results["wbits"] = args.wbits
+        results["abits"] = args.abits
 
     # PPL
     if not args.skip_ppl:

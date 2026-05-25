@@ -3,10 +3,14 @@ Demo 生成对比: Baseline vs W2A8 量化模型
 
 在多个中文场景下对比两个模型的生成结果，用于直观展示量化前后的质量差异。
 
+量化模型通过 ABQ-LLM 的 QuantLinear 基础设施加载，而非标准 from_pretrained。
+
 用法:
     python pipelines/run_demo.py \
         --baseline /path/to/Llama-2-7b-hf \
-        --quantized /path/to/Llama-2-7b-w2a8
+        --abq_params /path/to/abq_parameters.pth
+
+    baseline 路径同时作为量化模型的基座模型。
 """
 
 import os
@@ -96,7 +100,8 @@ DEMO_PROMPTS = [
 ]
 
 
-def generate_text(model, tokenizer, prompt, max_new_tokens=50, temperature=0.0):
+def generate_text(model, tokenizer, prompt, max_new_tokens=50, temperature=0.0,
+                  use_cache=True):
     """生成文本并测量耗时"""
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     input_len = inputs["input_ids"].shape[1]
@@ -109,6 +114,7 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=50, temperature=0.0):
                 max_new_tokens=max_new_tokens,
                 do_sample=False,
                 pad_token_id=tokenizer.eos_token_id,
+                use_cache=use_cache,
             )
         else:
             outputs = model.generate(
@@ -118,6 +124,7 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=50, temperature=0.0):
                 temperature=temperature,
                 top_p=0.9,
                 pad_token_id=tokenizer.eos_token_id,
+                use_cache=use_cache,
             )
     elapsed = time.time() - start_time
 
@@ -134,29 +141,17 @@ def generate_text(model, tokenizer, prompt, max_new_tokens=50, temperature=0.0):
     }
 
 
-def load_standard_model(model_path):
-    """标准 HF 模型加载"""
-    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path, torch_dtype=torch.float16, device_map="auto"
-    )
-    model.eval()
-    return model, tokenizer
-
-
-def run_demo_on_model(model_path, label):
-    """在一个模型上运行所有 demo 场景"""
+def run_demo_on_model(model, tokenizer, label, use_cache=True):
+    """在一个已加载的模型上运行所有 demo 场景"""
     print(f"\n{'='*60}")
-    print(f"  加载模型: {label}")
-    print(f"  路径: {model_path}")
+    print(f"  运行 Demo: {label}")
     print(f"{'='*60}\n")
-
-    model, tokenizer = load_standard_model(model_path)
 
     results = []
     for i, demo in enumerate(DEMO_PROMPTS):
         print(f"  [{i+1}/{len(DEMO_PROMPTS)}] {demo['category']} - {demo['description']}")
-        output = generate_text(model, tokenizer, demo["prompt"], demo["max_new_tokens"])
+        output = generate_text(model, tokenizer, demo["prompt"],
+                               demo["max_new_tokens"], use_cache=use_cache)
         print(f"    Prompt: {demo['prompt'][:60]}...")
         print(f"    Output: {output['text'][:80]}...")
         print(f"    ({output['num_tokens']} tokens, {output['time_sec']}s, {output['tokens_per_sec']} tok/s)")
@@ -169,9 +164,6 @@ def run_demo_on_model(model_path, label):
             "prompt": demo["prompt"],
             "output": output,
         })
-
-    del model
-    torch.cuda.empty_cache()
 
     return results
 
@@ -267,7 +259,6 @@ def save_demo_results(baseline_results, quant_results, baseline_name, quant_name
         md_lines.append(b["prompt"])
         md_lines.append(f"```\n")
 
-        # 用独立段落展示，避免表格里换行问题
         md_lines.append(f"**{baseline_name}:**")
         md_lines.append(f"> {b['output']['text']}")
         md_lines.append(f"> *({b['output']['tokens_per_sec']} tok/s, {b['output']['num_tokens']} tokens)*\n")
@@ -285,17 +276,54 @@ def save_demo_results(baseline_results, quant_results, baseline_name, quant_name
 
 def main():
     parser = argparse.ArgumentParser(description="Demo 生成对比: Baseline vs 量化模型")
-    parser.add_argument("--baseline", type=str, required=True, help="Baseline 模型路径")
-    parser.add_argument("--quantized", type=str, required=True, help="量化后模型路径")
+    parser.add_argument("--baseline", type=str, required=True,
+                        help="Baseline 模型路径 (同时作为量化模型的基座)")
+    parser.add_argument("--abq_params", type=str, required=True,
+                        help="ABQ-LLM 的 abq_parameters.pth 路径")
+    parser.add_argument("--wbits", type=int, default=2, help="权重量化位数")
+    parser.add_argument("--abits", type=int, default=8, help="激活量化位数")
     parser.add_argument("--baseline_name", type=str, default="LLaMA-2-7B (Baseline)")
     parser.add_argument("--quantized_name", type=str, default="LLaMA-2-7B (W2A8)")
     parser.add_argument("--save_dir", type=str,
                         default=os.path.join(PROJECT_ROOT, "outputs", "demo"))
     args = parser.parse_args()
 
-    baseline_results = run_demo_on_model(args.baseline, args.baseline_name)
-    quant_results = run_demo_on_model(args.quantized, args.quantized_name)
+    # ===== Baseline =====
+    print(f"\n{'='*60}")
+    print(f"  加载 Baseline: {args.baseline}")
+    print(f"{'='*60}\n")
+    baseline_tokenizer = AutoTokenizer.from_pretrained(args.baseline, use_fast=False)
+    baseline_model = AutoModelForCausalLM.from_pretrained(
+        args.baseline, torch_dtype=torch.float16, device_map="auto"
+    )
+    baseline_model.eval()
 
+    baseline_results = run_demo_on_model(
+        baseline_model, baseline_tokenizer, args.baseline_name, use_cache=True
+    )
+
+    del baseline_model
+    torch.cuda.empty_cache()
+
+    # ===== 量化模型 (通过 ABQ-LLM 基础设施加载) =====
+    from unified.abq_model_loader import load_abq_quantized_model
+
+    quant_model, quant_tokenizer = load_abq_quantized_model(
+        base_model_path=args.baseline,
+        abq_params_path=args.abq_params,
+        wbits=args.wbits,
+        abits=args.abits,
+    )
+
+    # 量化模型使用 use_cache=False 避免 DynamicCache 与 QuantLlamaAttention 的兼容问题
+    quant_results = run_demo_on_model(
+        quant_model, quant_tokenizer, args.quantized_name, use_cache=False
+    )
+
+    del quant_model
+    torch.cuda.empty_cache()
+
+    # ===== 对比输出 =====
     print_side_by_side(baseline_results, quant_results, args.baseline_name, args.quantized_name)
     save_demo_results(baseline_results, quant_results, args.baseline_name, args.quantized_name, args.save_dir)
 

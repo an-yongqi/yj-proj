@@ -149,10 +149,9 @@ class QuantLlamaAttention(nn.Module):
             )
 
         if attention_mask is not None:
-            if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-                raise ValueError(
-                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
-                )
+            # transformers>=4.42 causal mask 可能多一列，裁剪到匹配
+            if attention_mask.shape[-1] > kv_seq_len:
+                attention_mask = attention_mask[:, :, :, :kv_seq_len]
             attn_weights = attn_weights + attention_mask
             attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
 

@@ -13,7 +13,7 @@ NSAMPLES="${NSAMPLES:-128}"
 
 # 从模型名推断输出目录
 MODEL_NAME="$(basename "$MODEL_PATH")"
-PR_INT=$(python -c "print(int(${PRUNING_RATIO}*100))")
+PR_INT=$(python3 -c "print(int(${PRUNING_RATIO}*100))")
 PRUNED_DIR="$PROJECT_ROOT/outputs/pruned_models/${MODEL_NAME}-pruned-${PR_INT}pct"
 
 echo "============================================"
@@ -25,7 +25,7 @@ echo "============================================"
 cd "$PROJECT_ROOT"
 
 # Step 1: 剪枝
-python pipelines/run_prune.py \
+python3 pipelines/run_prune.py \
     --model "$MODEL_PATH" \
     --pruning_ratio "$PRUNING_RATIO" \
     --nsamples "$NSAMPLES" \
@@ -33,7 +33,7 @@ python pipelines/run_prune.py \
     --use_mask
 
 # Step 2: PPL 评估
-python pipelines/run_eval_only.py \
+python3 pipelines/run_eval_only.py \
     --model "$PRUNED_DIR" \
     --name "pruned-${PR_INT}pct" \
     --skip_zeroshot

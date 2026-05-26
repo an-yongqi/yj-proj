@@ -16,7 +16,7 @@ echo "============================================"
 
 cd "$PROJECT_ROOT"
 
-python pipelines/run_eval_only.py \
+python3 pipelines/run_eval_only.py \
     --model "$MODEL_PATH" \
     --name baseline \
     --skip_zeroshot

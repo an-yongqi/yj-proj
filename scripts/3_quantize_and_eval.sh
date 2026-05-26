@@ -26,7 +26,7 @@ echo "============================================"
 cd "$PROJECT_ROOT"
 
 # Step 1: 量化
-python pipelines/run_quantize.py \
+python3 pipelines/run_quantize.py \
     --model "$MODEL_PATH" \
     --save_dir "$SAVE_DIR" \
     --wbits "$WBITS" \
@@ -35,7 +35,7 @@ python pipelines/run_quantize.py \
     --nsamples "$NSAMPLES"
 
 # Step 2: PPL 评估
-python pipelines/run_eval_only.py \
+python3 pipelines/run_eval_only.py \
     --model "$MODEL_PATH" \
     --abq_params "$LOG_DIR/abq_parameters.pth" \
     --wbits "$WBITS" \

@@ -40,7 +40,7 @@ def main():
     parser.add_argument("--prune_method", type=str, default="noiter_group_weight",
                         choices=["ziplm", "noiter", "noiter_group", "noiter_group_weight"])
     parser.add_argument("--save_model", type=str,
-                        default=os.path.join(PROJECT_ROOT, "outputs", "pruned_models", "Llama-2-7b-pruned-20pct"))
+                        default=None)
     parser.add_argument("--work_dir", type=str, default=None,
                         help="中间文件保存目录（默认 outputs/pruned_models/work）")
     parser.add_argument("--skip_stages", type=str, default="",
@@ -49,12 +49,16 @@ def main():
                         help="Mask 模式: 置零而非物理移除，保持维度不变，兼容后续量化")
     args = parser.parse_args()
 
+    pr_int = int(args.pruning_ratio * 100)
+    if args.save_model is None:
+        model_name = os.path.basename(args.model.rstrip("/"))
+        args.save_model = os.path.join(PROJECT_ROOT, "outputs", "pruned_models", f"{model_name}-pruned-{pr_int}pct")
+
     if args.work_dir is None:
         args.work_dir = os.path.join(PROJECT_ROOT, "outputs", "pruned_models", "work")
     os.makedirs(args.work_dir, exist_ok=True)
 
     skip = set(args.skip_stages.split(",")) if args.skip_stages else set()
-    pr_int = int(args.pruning_ratio * 100)
     lam_int = int(args.Lambda * 100)
 
     # Stage 1: K-means 聚类

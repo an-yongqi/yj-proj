@@ -62,7 +62,6 @@ fi
 # ── Step 1: FullKV Baseline ──
 echo ""
 echo ">>> [1/2] FullKV Baseline 推理..."
-CUDA_VISIBLE_DEVICES=$GPU \
 LONGBENCH_DATASETS="$DATASETS" \
 LONGBENCH_DATA_DIR="$DATA_DIR" \
 python3 run_longbench.py \
@@ -78,7 +77,6 @@ python3 run_longbench.py \
 # ── Step 2: ReST-KV ──
 echo ""
 echo ">>> [2/2] ReST-KV 推理 (capacity=128)..."
-CUDA_VISIBLE_DEVICES=$GPU \
 LONGBENCH_DATASETS="$DATASETS" \
 LONGBENCH_DATA_DIR="$DATA_DIR" \
 python3 run_longbench.py \

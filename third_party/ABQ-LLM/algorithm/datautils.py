@@ -13,12 +13,29 @@
 # limitations under the License.
 
 
+import os
 import pdb
 from transformers import AutoTokenizer
 from datasets import load_dataset
 import numpy as np
 import torch
 import random
+
+# wikitext-2 本地 parquet 回退路径
+_WIKITEXT_LOCAL_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+    "data", "wikitext-2-raw",
+)
+
+def _load_wikitext2(split):
+    """加载 wikitext-2，在线失败时回退到本地 parquet"""
+    try:
+        return load_dataset('wikitext', 'wikitext-2-raw-v1', split=split)
+    except Exception:
+        parquet_map = {"train": "train.parquet", "test": "test.parquet", "validation": "validation.parquet"}
+        local_path = os.path.join(_WIKITEXT_LOCAL_DIR, parquet_map[split])
+        print(f"  在线加载失败，使用本地文件: {local_path}")
+        return load_dataset("parquet", data_files=local_path, split="train")
 
 
 def set_seed(seed):
@@ -29,8 +46,8 @@ def set_seed(seed):
 
 def get_wikitext2(nsamples, seed, seqlen, model):
     print("get_wikitext2")
-    traindata = load_dataset('wikitext', 'wikitext-2-raw-v1', split='train')
-    testdata = load_dataset('wikitext', 'wikitext-2-raw-v1', split='test')
+    traindata = _load_wikitext2('train')
+    testdata = _load_wikitext2('test')
 
     tokenizer = AutoTokenizer.from_pretrained(model, use_fast=False)
     trainenc = tokenizer("\n\n".join(traindata['text']), return_tensors='pt')

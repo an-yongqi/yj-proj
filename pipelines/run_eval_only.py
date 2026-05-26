@@ -35,7 +35,12 @@ def eval_ppl_wikitext2(model, tokenizer, seqlen=2048):
     import torch.nn as nn
 
     device = next(model.parameters()).device
-    testdata = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
+    try:
+        testdata = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
+    except Exception:
+        local_path = os.path.join(PROJECT_ROOT, "data", "wikitext-2-raw", "test.parquet")
+        print(f"    在线加载失败，使用本地文件: {local_path}")
+        testdata = load_dataset("parquet", data_files=local_path, split="train")
     testenc = tokenizer("\n\n".join(testdata["text"]), return_tensors="pt")
     testenc = testenc.input_ids
 

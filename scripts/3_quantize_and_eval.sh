@@ -15,7 +15,7 @@ NSAMPLES="${NSAMPLES:-128}"
 BATCH_SIZE="${BATCH_SIZE:-4}"
 
 MODEL_NAME="$(basename "$MODEL_PATH")"
-SAVE_DIR="$PROJECT_ROOT/outputs/quantized_models/${MODEL_NAME}-w${WBITS}a${ABITS}-ep${EPOCHS}"
+SAVE_DIR="$PROJECT_ROOT/outputs/quantized_models/${MODEL_NAME}-w${WBITS}a${ABITS}-ep${EPOCHS}-bs${BATCH_SIZE}"
 LOG_DIR="$SAVE_DIR/log"
 
 echo "============================================"

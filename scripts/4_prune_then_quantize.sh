@@ -19,7 +19,7 @@ BATCH_SIZE="${BATCH_SIZE:-4}"
 MODEL_NAME="$(basename "$MODEL_PATH")"
 PR_INT=$(python3 -c "print(int(${PRUNING_RATIO}*100))")
 PRUNED_DIR="$PROJECT_ROOT/outputs/pruned_models/${MODEL_NAME}-pruned-${PR_INT}pct"
-SAVE_DIR="$PROJECT_ROOT/outputs/pruned_quantized_models/${MODEL_NAME}-pruned${PR_INT}-w${WBITS}a${ABITS}"
+SAVE_DIR="$PROJECT_ROOT/outputs/pruned_quantized_models/${MODEL_NAME}-pruned${PR_INT}-w${WBITS}a${ABITS}-ep${EPOCHS}-bs${BATCH_SIZE}"
 LOG_DIR="$PROJECT_ROOT/outputs/pruned_quantized_models/${MODEL_NAME}-pruned${PR_INT}-w${WBITS}a${ABITS}/log"
 
 echo "============================================"

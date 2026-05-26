@@ -15,7 +15,7 @@ SAVE_DIR="${SAVE_DIR:-$PROJECT_ROOT/outputs/restkv_longbench}"
 # sdpa 兼容性最好; 若安装了 flash-attn 可改为 flash_attention_2
 ATTN="${ATTN:-sdpa}"
 # 4 个短上下文任务 (适合 4K 上下文的 Llama-2)
-DATASETS="${DATASETS:-hotpotqa,trec,triviaqa,samsum}"
+DATASETS="${DATASETS:-hotpotqa}"
 # 每个数据集最多测试样本数 (快速验证用, 设 0 或不设表示全量)
 MAX_EXAMPLES="${MAX_EXAMPLES:-20}"
 GPU="${GPU:-0}"

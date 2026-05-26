@@ -92,32 +92,7 @@ def main():
 
     # Evaluate the model
     model_name = args.model.split("/")[-1]
-    if args.eval:
-        ppl = eval_ppl(model, tokenizer, device, 'wikitext2')
-        print(f"ppl on wikitext {ppl:.2f}")
-        # PTB 数据集需要联网下载，离线环境跳过
-        # ppl = eval_ppl(model, tokenizer, device, 'ptb')
-        # print(f"ppl on ptb {ppl:.2f}")
-    if args.eval_zero_shot:
-
-        accelerate=False
-        if "30b" in args.model or "65b" in args.model or "70b" in args.model:
-            accelerate=True
-
-        task_list = ["boolq", "hellaswag", "winogrande", "arc_easy", "arc_challenge", "openbookqa", "piqa"]
-        num_shot = 0
-        results = eval_zero_shot(args.model, model, tokenizer, task_list, num_shot, accelerate)
-        print("********************************")
-        print("zero_shot evaluation results")
-        for task in task_list:
-            result = results['results'][task]
-            if 'acc_norm' in result:
-                acc = result['acc_norm'] * 100
-                print(f"{task}: {acc:.2f}")
-            else:
-                acc = result['acc'] * 100
-                print(f"{task}: {acc:.2f}")
-    # Save the model
+    # Save the model (先保存再评估，避免评估 OOM 导致模型丢失)
     if args.save_model:
         if not os.path.exists(args.save_model):
             os.makedirs(args.save_model)
@@ -152,7 +127,29 @@ def main():
                 model.config.hidden_size = actual_hidden
         model.save_pretrained(args.save_model)
         tokenizer.save_pretrained(args.save_model)
-    
+
+    if args.eval:
+        ppl = eval_ppl(model, tokenizer, device, 'wikitext2')
+        print(f"ppl on wikitext {ppl:.2f}")
+    if args.eval_zero_shot:
+        accelerate=False
+        if "30b" in args.model or "65b" in args.model or "70b" in args.model:
+            accelerate=True
+
+        task_list = ["boolq", "hellaswag", "winogrande", "arc_easy", "arc_challenge", "openbookqa", "piqa"]
+        num_shot = 0
+        results = eval_zero_shot(args.model, model, tokenizer, task_list, num_shot, accelerate)
+        print("********************************")
+        print("zero_shot evaluation results")
+        for task in task_list:
+            result = results['results'][task]
+            if 'acc_norm' in result:
+                acc = result['acc_norm'] * 100
+                print(f"{task}: {acc:.2f}")
+            else:
+                acc = result['acc'] * 100
+                print(f"{task}: {acc:.2f}")
+
 
 if __name__ == '__main__':
     main()

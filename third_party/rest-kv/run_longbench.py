@@ -446,12 +446,21 @@ if __name__ == "__main__":
 
     max_capacity_prompts = args.max_capacity_prompts
 
-    for idx, dataset in enumerate(datasets):
+    # 支持通过环境变量限制数据集 (逗号分隔)
+    eval_datasets = os.environ.get("LONGBENCH_DATASETS", "").strip()
+    if eval_datasets:
+        run_datasets = [d.strip() for d in eval_datasets.split(",") if d.strip()]
+    else:
+        run_datasets = datasets
 
-        print(f"Working on max_capacity_prompts {args.max_capacity_prompts} dataset {dataset} - {idx}/{len(datasets)}")
+    data_dir = os.environ.get("LONGBENCH_DATA_DIR", "data/LongBench")
+
+    for idx, dataset in enumerate(run_datasets):
+
+        print(f"Working on max_capacity_prompts {args.max_capacity_prompts} dataset {dataset} - {idx}/{len(run_datasets)}")
 
         args.dataset = dataset
 
-        args.data_file = f"data/LongBench/{args.dataset}.jsonl"
+        args.data_file = f"{data_dir}/{args.dataset}.jsonl"
 
         main(args)

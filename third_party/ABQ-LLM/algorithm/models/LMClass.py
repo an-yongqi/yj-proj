@@ -89,7 +89,7 @@ class LMClass(BaseLM):
         """
         with torch.no_grad():
 
-            return self.model(inps)["logits"]
+            return self.model(inps, use_cache=False)["logits"]
 
     def model_batched_set(self, inps):
         dataset_logits = []

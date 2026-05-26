@@ -71,6 +71,11 @@ def main():
     print("=" * 60)
     print(f"  Step 2/2: ABQ-LLM W{args.wbits}A{args.abits} 量化")
     print("=" * 60)
+    # net 名称从原始模型路径推断（剪枝后路径名可能变了）
+    sys.path.insert(0, PROJECT_ROOT)
+    from unified.model_utils import detect_net_name
+    net_name = detect_net_name(args.model)
+
     run_command([
         sys.executable, os.path.join(PROJECT_ROOT, "pipelines", "run_quantize.py"),
         "--model", pruned_dir,
@@ -78,7 +83,7 @@ def main():
         "--wbits", str(args.wbits),
         "--abits", str(args.abits),
         "--epochs", str(args.epochs),
-        "--net", "Llama-2-7b",
+        "--net", net_name,
     ])
 
     print(f"\n剪枝+量化完成！最终模型保存至: {final_dir}")

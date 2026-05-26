@@ -45,7 +45,13 @@ def main():
     # 确定 act_scales 文件名（从模型路径推断）
     act_scales_name = args.model.rstrip('/').split('/')[-1]
     # 确定 net 名称（ABQ-LLM 要求从固定列表选，用于模型架构识别）
-    net_name = args.net or "Llama-2-7b"
+    if args.net:
+        net_name = args.net
+    else:
+        sys.path.insert(0, PROJECT_ROOT)
+        from unified.model_utils import detect_net_name
+        net_name = detect_net_name(args.model)
+        print(f"自动检测 net 名称: {net_name}")
     # act_scales/act_shifts 文件路径
     act_scales_path = os.path.join(ABQ_DIR, "act_scales", f"{act_scales_name}.pt")
     act_shifts_path = os.path.join(ABQ_DIR, "act_shifts", f"{act_scales_name}.pt")

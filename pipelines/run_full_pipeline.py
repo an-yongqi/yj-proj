@@ -128,6 +128,8 @@ def main():
         print(f"\n{'='*60}")
         print(f"  Step 2/4: ABQ-LLM W{args.wbits}A{args.abits} 量化")
         print(f"{'='*60}")
+        from unified.model_utils import detect_net_name
+        net_name = detect_net_name(args.model)
         run_command([
             sys.executable, os.path.join(PROJECT_ROOT, "pipelines", "run_quantize.py"),
             "--model", pruned_dir,
@@ -135,7 +137,7 @@ def main():
             "--wbits", str(args.wbits),
             "--abits", str(args.abits),
             "--epochs", str(args.quant_epochs),
-            "--net", "Llama-2-7b",
+            "--net", net_name,
         ])
     else:
         print(f"\n[跳过] Step 2: 使用已有量化模型 {pq_dir}")

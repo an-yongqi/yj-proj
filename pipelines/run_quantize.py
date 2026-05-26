@@ -37,8 +37,11 @@ def main():
     parser.add_argument("--abits", type=int, default=8)
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--nsamples", type=int, default=128)
+    parser.add_argument("--batch_size", type=int, default=4, help="量化训练 batch size (默认4, 增大可加速)")
     parser.add_argument("--net", type=str, default=None, help="显式指定网络名称")
     parser.add_argument("--tasks", type=str, default=TASKS)
+    parser.add_argument("--output_dir", type=str, default=None,
+                        help="量化参数输出目录 (默认: outputs/quantized_models/log)")
     parser.add_argument("--skip_act_scales", action="store_true", help="跳过激活统计生成")
     args = parser.parse_args()
 
@@ -73,7 +76,7 @@ def main():
     print("=" * 60)
     print(f"  Step 2: W{args.wbits}A{args.abits} 量化 + 评估")
     print("=" * 60)
-    output_dir = os.path.join(PROJECT_ROOT, "outputs", "quantized_models", "log")
+    output_dir = args.output_dir or os.path.join(PROJECT_ROOT, "outputs", "quantized_models", "log")
     cmd = [
         sys.executable, "main.py",
         "--model", args.model,
@@ -82,6 +85,7 @@ def main():
         "--output_dir", output_dir,
         "--wbits", str(args.wbits),
         "--abits", str(args.abits),
+        "--batch_size", str(args.batch_size),
         "--lwc", "--let",
         "--save_dir", args.save_dir,
         "--tasks", args.tasks,

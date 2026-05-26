@@ -12,9 +12,10 @@ PRUNING_RATIO="${PRUNING_RATIO:-0.2}"
 NSAMPLES="${NSAMPLES:-128}"
 
 # 从模型名推断输出目录
-MODEL_NAME="$(basename "$MODEL_PATH")"
+# 短名: Llama-2-7b-chat-hf → Llama-2-7b
+MODEL_SHORT=$(basename "$MODEL_PATH" | sed 's/-chat.*//;s/-hf$//')
 PR_INT=$(python3 -c "print(int(${PRUNING_RATIO}*100))")
-PRUNED_DIR="$PROJECT_ROOT/outputs/pruned_models/${MODEL_NAME}-pruned-${PR_INT}pct"
+PRUNED_DIR="$PROJECT_ROOT/outputs/pruned_models/${MODEL_SHORT}-pruned-${PR_INT}pct"
 
 echo "============================================"
 echo "  FANG ${PR_INT}% Mask 剪枝 + PPL 评估"

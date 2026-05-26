@@ -51,8 +51,10 @@ def main():
 
     pr_int = int(args.pruning_ratio * 100)
     if args.save_model is None:
-        model_name = os.path.basename(args.model.rstrip("/"))
-        args.save_model = os.path.join(PROJECT_ROOT, "outputs", "pruned_models", f"{model_name}-pruned-{pr_int}pct")
+        # 用短名: Llama-2-7b-chat-hf → Llama-2-7b
+        model_basename = os.path.basename(args.model.rstrip("/"))
+        short_name = model_basename.split("-hf")[0].split("-chat")[0]
+        args.save_model = os.path.join(PROJECT_ROOT, "outputs", "pruned_models", f"{short_name}-pruned-{pr_int}pct")
 
     if args.work_dir is None:
         args.work_dir = os.path.join(PROJECT_ROOT, "outputs", "pruned_models", "work")

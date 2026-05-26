@@ -16,10 +16,10 @@ EPOCHS="${EPOCHS:-40}"
 NSAMPLES="${NSAMPLES:-128}"
 BATCH_SIZE="${BATCH_SIZE:-4}"
 
-MODEL_NAME="$(basename "$MODEL_PATH")"
+MODEL_SHORT=$(basename "$MODEL_PATH" | sed 's/-chat.*//;s/-hf$//')
 PR_INT=$(python3 -c "print(int(${PRUNING_RATIO}*100))")
-PRUNED_DIR="$PROJECT_ROOT/outputs/pruned_models/${MODEL_NAME}-pruned-${PR_INT}pct"
-SAVE_DIR="$PROJECT_ROOT/outputs/pruned_quantized_models/${MODEL_NAME}-pruned${PR_INT}-w${WBITS}a${ABITS}-ep${EPOCHS}-bs${BATCH_SIZE}"
+PRUNED_DIR="$PROJECT_ROOT/outputs/pruned_models/${MODEL_SHORT}-pruned-${PR_INT}pct"
+SAVE_DIR="$PROJECT_ROOT/outputs/pruned_quantized_models/${MODEL_SHORT}-pruned${PR_INT}-w${WBITS}a${ABITS}-ep${EPOCHS}-bs${BATCH_SIZE}"
 LOG_DIR="$PROJECT_ROOT/outputs/pruned_quantized_models/${MODEL_NAME}-pruned${PR_INT}-w${WBITS}a${ABITS}/log"
 
 echo "============================================"

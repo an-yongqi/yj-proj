@@ -121,8 +121,9 @@ class QuantLlamaAttention(nn.Module):
         if past_key_value is not None:
             if isinstance(past_key_value, tuple):
                 past_kv_tuple = past_key_value
-            elif len(past_key_value) > 0 and self.layer_idx is not None:
-                # DynamicCache 且有历史数据
+            elif (self.layer_idx is not None
+                  and len(past_key_value.key_cache) > self.layer_idx):
+                # DynamicCache 且当前层有历史数据
                 past_kv_tuple = (past_key_value.key_cache[self.layer_idx],
                                  past_key_value.value_cache[self.layer_idx])
 

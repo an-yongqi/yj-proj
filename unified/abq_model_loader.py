@@ -78,6 +78,12 @@ def _make_quant_args(wbits=2, abits=8, lwc=True, let=True):
         "symmetric": False,
         "dynamic_method": "per_token",
     }
+    args.p_quant_params = {
+        "n_bits": abits,
+        "per_channel_axes": [],
+        "symmetric": False,
+        "dynamic_method": "per_token",
+    }
     return args
 
 

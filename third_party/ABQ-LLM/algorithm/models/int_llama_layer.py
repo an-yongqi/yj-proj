@@ -57,6 +57,8 @@ class QuantLlamaAttention(nn.Module):
                  args=None):
         super().__init__()
         self.config = config
+        # 保存 layer_idx，用于 ReST-KV 等需要按层区分的模块
+        self.layer_idx = getattr(org_module, 'layer_idx', None)
         # 从实际权重推断维度（支持非均匀剪枝）
         self.head_dim = config.hidden_size // config.num_attention_heads  # head_dim 不变
         q_out_features = org_module.q_proj.out_features
@@ -111,6 +113,8 @@ class QuantLlamaAttention(nn.Module):
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
+        # 记录是否为 prefix 阶段 (首次调用, 无历史 KV cache)
+        is_prefix = past_key_value is None
 
         # query_states = self.q_proj(hidden_states)
         # key_states = self.k_proj(hidden_states)
@@ -133,12 +137,21 @@ class QuantLlamaAttention(nn.Module):
             key_states = torch.cat([past_key_value[0], key_states], dim=2)
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
 
-        past_key_value = (key_states, value_states) if use_cache else None
-
         # repeat k/v heads if n_kv_heads < n_heads
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
-        
+
+        # ── ReST-KV: KV cache 压缩 (仅 prefix 阶段) ──
+        if hasattr(self, 'kv_cluster') and is_prefix:
+            key_states, value_states = self.kv_cluster.update_kv(
+                key_states, query_states, value_states,
+                attention_mask, self.num_key_value_groups,
+                self.o_proj.weight.data
+            )
+            kv_seq_len = key_states.shape[-2]
+
+        past_key_value = (key_states, value_states) if use_cache else None
+
         query_states = self.qkt_matmul.quant_x1(query_states)
         key_states = self.qkt_matmul.quant_x2(key_states)
         attn_weights = self.qkt_matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)

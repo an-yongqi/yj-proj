@@ -20,7 +20,7 @@ MODEL_SHORT=$(basename "$MODEL_PATH" | sed 's/-chat.*//;s/-hf$//')
 PR_INT=$(python3 -c "print(int(${PRUNING_RATIO}*100))")
 PRUNED_DIR="$PROJECT_ROOT/outputs/pruned_models/${MODEL_SHORT}-pruned-${PR_INT}pct"
 SAVE_DIR="$PROJECT_ROOT/outputs/pruned_quantized_models/${MODEL_SHORT}-pruned${PR_INT}-w${WBITS}a${ABITS}-ep${EPOCHS}-bs${BATCH_SIZE}"
-LOG_DIR="$PROJECT_ROOT/outputs/pruned_quantized_models/${MODEL_NAME}-pruned${PR_INT}-w${WBITS}a${ABITS}/log"
+LOG_DIR="$SAVE_DIR/log"
 
 echo "============================================"
 echo "  剪枝模型 W${WBITS}A${ABITS} 量化 + PPL 评估"

@@ -113,36 +113,42 @@ class QuantLlamaAttention(nn.Module):
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
-        # 记录是否为 prefix 阶段 (首次调用, 无历史 KV cache)
-        is_prefix = past_key_value is None
 
-        # query_states = self.q_proj(hidden_states)
-        # key_states = self.k_proj(hidden_states)
-        # value_states = self.v_proj(hidden_states)
+        # ── 兼容 transformers>=4.42 DynamicCache ──
+        # DynamicCache 不是 tuple，需要提取为 (k, v) tuple 或 None
+        past_kv_tuple = None  # 标准化为 (past_k, past_v) 或 None
+        is_dynamic_cache = past_key_value is not None and not isinstance(past_key_value, tuple)
+        if past_key_value is not None:
+            if isinstance(past_key_value, tuple):
+                past_kv_tuple = past_key_value
+            elif len(past_key_value) > 0 and self.layer_idx is not None:
+                # DynamicCache 且有历史数据
+                past_kv_tuple = (past_key_value.key_cache[self.layer_idx],
+                                 past_key_value.value_cache[self.layer_idx])
+
         query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        key_states =self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
-        if past_key_value is not None:
-            kv_seq_len += past_key_value[0].shape[-2]
+        if past_kv_tuple is not None:
+            kv_seq_len += past_kv_tuple[0].shape[-2]
         cos, sin = self.rotary_emb(value_states, position_ids)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
-
         # [bsz, nh, t, hd]
 
-        if past_key_value is not None:
+        if past_kv_tuple is not None:
             # reuse k, v, self_attention
-            key_states = torch.cat([past_key_value[0], key_states], dim=2)
-            value_states = torch.cat([past_key_value[1], value_states], dim=2)
+            key_states = torch.cat([past_kv_tuple[0], key_states], dim=2)
+            value_states = torch.cat([past_kv_tuple[1], value_states], dim=2)
 
         # repeat k/v heads if n_kv_heads < n_heads
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        # ── ReST-KV: KV cache 压缩 (仅 prefix 阶段) ──
-        if hasattr(self, 'kv_cluster') and is_prefix:
+        # ── ReST-KV: KV cache 压缩 (仅 prefix 阶段, 即无历史 KV) ──
+        if hasattr(self, 'kv_cluster') and past_kv_tuple is None:
             key_states, value_states = self.kv_cluster.update_kv(
                 key_states, query_states, value_states,
                 attention_mask, self.num_key_value_groups,
@@ -150,7 +156,20 @@ class QuantLlamaAttention(nn.Module):
             )
             kv_seq_len = key_states.shape[-2]
 
-        past_key_value = (key_states, value_states) if use_cache else None
+        # 更新 cache
+        if use_cache:
+            if is_dynamic_cache:
+                # DynamicCache: 直接写入内部存储 (已手动 concat, 不能用 update)
+                layer_idx = self.layer_idx if self.layer_idx is not None else 0
+                if len(past_key_value.key_cache) <= layer_idx:
+                    past_key_value.key_cache.append(key_states)
+                    past_key_value.value_cache.append(value_states)
+                else:
+                    past_key_value.key_cache[layer_idx] = key_states
+                    past_key_value.value_cache[layer_idx] = value_states
+                past_key_value._seen_tokens = kv_seq_len
+            else:
+                past_key_value = (key_states, value_states)
 
         query_states = self.qkt_matmul.quant_x1(query_states)
         key_states = self.qkt_matmul.quant_x2(key_states)

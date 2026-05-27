@@ -148,8 +148,8 @@ class QuantLlamaAttention(nn.Module):
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        # ── ReST-KV: KV cache 压缩 (仅 prefix 阶段, 即无历史 KV) ──
-        if hasattr(self, 'kv_cluster') and past_kv_tuple is None:
+        # ── ReST-KV: KV cache 压缩 (仅 use_cache=True 且 prefix 阶段) ──
+        if hasattr(self, 'kv_cluster') and use_cache and past_kv_tuple is None:
             key_states, value_states = self.kv_cluster.update_kv(
                 key_states, query_states, value_states,
                 attention_mask, self.num_key_value_groups,

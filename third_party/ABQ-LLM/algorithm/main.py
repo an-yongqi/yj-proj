@@ -135,12 +135,15 @@ def evaluate(lm, args, logger):
                 if "opt" in args.net.lower():
                     outputs = lm.model.model.decoder(batch)
                 elif "llama" in args.net.lower() or "mixtral" in args.net.lower():
-                    outputs = lm.model.model(batch)
+                    outputs = lm.model.model(batch, use_cache=False)
                 elif "falcon" in args.model:
                     outputs = lm.model.transformer(batch)
                 hidden_states = outputs[0]
+                del outputs
                 logits = lm.model.lm_head(hidden_states)
-                shift_logits = logits[:, :-1, :]
+                del hidden_states
+                shift_logits = logits[:, :-1, :].contiguous()
+                del logits
                 shift_labels = testenc[:, (i * lm.seqlen) : ((i + 1) * lm.seqlen)][
                     :, 1:
                 ].to(lm.model.lm_head.weight.device)
@@ -149,12 +152,15 @@ def evaluate(lm, args, logger):
                     shift_logits.view(-1, shift_logits.size(-1)),
                     shift_labels.view(-1),
                 )
-                neg_log_likelihood = loss.float() * lm.seqlen
+                del shift_logits, shift_labels
+                neg_log_likelihood = loss.float().item() * lm.seqlen
                 nlls.append(neg_log_likelihood)
+                del loss
+                torch.cuda.empty_cache()
                 if i == args.limit:
                     break
 
-            ppl = torch.exp(torch.stack(nlls).sum() / (nsamples * lm.seqlen))
+            ppl = torch.exp(torch.tensor(sum(nlls)) / (nsamples * lm.seqlen))
             logger.info(f'{dataset} : {ppl.item()}')
             lm.model.config.use_cache = use_cache
             results[dataset] = ppl.item()

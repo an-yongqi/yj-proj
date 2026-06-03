@@ -41,16 +41,22 @@ def eval_ppl_wikitext2(model, tokenizer, seqlen=2048, max_samples=20):
             batch = testenc[:, (i * seqlen):((i + 1) * seqlen)].to(device)
             outputs = model(batch, use_cache=False)
             logits = outputs.logits
+            del outputs
             shift_logits = logits[:, :-1, :].contiguous()
+            del logits
             shift_labels = testenc[:, (i * seqlen):((i + 1) * seqlen)][:, 1:].to(device)
             loss = nn.CrossEntropyLoss()(
                 shift_logits.view(-1, shift_logits.size(-1)),
                 shift_labels.view(-1),
             )
-            nlls.append(loss.float() * seqlen)
+            del shift_logits, shift_labels
+            nlls.append(loss.float().item() * seqlen)
+            del loss
+            torch.cuda.empty_cache()
 
-    ppl = torch.exp(torch.stack(nlls).sum() / (nsamples * seqlen))
-    return ppl.item()
+    import math
+    ppl = math.exp(sum(nlls) / (nsamples * seqlen))
+    return ppl
 
 
 def generate_with_cache(model, tokenizer, prompt, max_new_tokens=50):
@@ -98,11 +104,15 @@ def compute_generate_loss(model, tokenizer, prompt, continuation, device):
         for t in range(n_tokens):
             out = model(prev_token, past_key_values=past_kv, use_cache=True)
             logits = out.logits[:, -1, :]
+            past_kv = out.past_key_values
+            del out
             target = cont_ids[:, t]
             loss = nn.CrossEntropyLoss()(logits, target)
             total_loss += loss.item()
-            past_kv = out.past_key_values
+            del logits, loss
             prev_token = cont_ids[:, t:t+1]
+        del past_kv
+        torch.cuda.empty_cache()
 
     return total_loss / n_tokens
 

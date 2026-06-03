@@ -138,6 +138,8 @@ def evaluate_ppl(model, tokenizer, dataset="wikitext2", device=None, seqlen=2048
     Returns:
         float: perplexity 值
     """
+    import math
+
     if device is None:
         device = next(model.parameters()).device
 
@@ -161,25 +163,27 @@ def evaluate_ppl(model, tokenizer, dataset="wikitext2", device=None, seqlen=2048
     with torch.no_grad():
         for i in range(nsamples):
             batch = testenc[:, (i * seqlen):((i + 1) * seqlen)].to(device)
-            outputs = model(batch)
+            outputs = model(batch, use_cache=False)
             logits = outputs.logits
+            del outputs
 
             shift_logits = logits[:, :-1, :].contiguous()
+            del logits
             shift_labels = testenc[:, (i * seqlen):((i + 1) * seqlen)][:, 1:].to(device)
 
-            loss_fct = nn.CrossEntropyLoss()
-            loss = loss_fct(
+            loss = nn.CrossEntropyLoss()(
                 shift_logits.view(-1, shift_logits.size(-1)),
                 shift_labels.view(-1),
             )
-            neg_log_likelihood = loss.float() * seqlen
-            nlls.append(neg_log_likelihood)
+            del shift_logits, shift_labels
+            nlls.append(loss.float().item() * seqlen)
+            del loss
+            torch.cuda.empty_cache()
 
-    ppl = torch.exp(torch.stack(nlls).sum() / (nsamples * seqlen))
+    ppl = math.exp(sum(nlls) / (nsamples * seqlen))
     model.config.use_cache = use_cache
-    torch.cuda.empty_cache()
 
-    return ppl.item()
+    return ppl
 
 
 def format_results(results, technique_name, save_dir=None):

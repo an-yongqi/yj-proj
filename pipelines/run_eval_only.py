@@ -33,6 +33,7 @@ def eval_ppl_wikitext2(model, tokenizer, seqlen=2048):
     """WikiText-2 PPL 评估"""
     from datasets import load_dataset
     import torch.nn as nn
+    import math
 
     device = next(model.parameters()).device
     try:
@@ -54,19 +55,24 @@ def eval_ppl_wikitext2(model, tokenizer, seqlen=2048):
     with torch.no_grad():
         for i in range(nsamples):
             batch = testenc[:, (i * seqlen):((i + 1) * seqlen)].to(device)
-            outputs = model(batch)
+            outputs = model(batch, use_cache=False)
             logits = outputs.logits
+            del outputs
             shift_logits = logits[:, :-1, :].contiguous()
+            del logits
             shift_labels = testenc[:, (i * seqlen):((i + 1) * seqlen)][:, 1:].to(device)
             loss = nn.CrossEntropyLoss()(
                 shift_logits.view(-1, shift_logits.size(-1)),
                 shift_labels.view(-1),
             )
-            nlls.append(loss.float() * seqlen)
+            del shift_logits, shift_labels
+            nlls.append(loss.float().item() * seqlen)
+            del loss
+            torch.cuda.empty_cache()
 
-    ppl = torch.exp(torch.stack(nlls).sum() / (nsamples * seqlen))
+    ppl = math.exp(sum(nlls) / (nsamples * seqlen))
     model.config.use_cache = use_cache
-    return ppl.item()
+    return ppl
 
 
 def eval_zero_shot(model, tokenizer, batch_size=4):

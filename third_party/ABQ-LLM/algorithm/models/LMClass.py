@@ -98,6 +98,7 @@ class LMClass(BaseLM):
                 self._model_call(batch), dim=-1
             ).cpu()  # [batch, padding_length, vocab]
             dataset_logits.append(multi_logits)
+            torch.cuda.empty_cache()
         return dataset_logits
 
     def _model_generate(self, context, max_length, eos_token_id):

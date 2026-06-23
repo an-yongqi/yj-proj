@@ -2,7 +2,15 @@
   "experiment": "w2a16_prune20",
   "display_name": "W2A16+剪枝20%",
   "model_size_gb": 1.35,
-  "samples_per_task": 10000,
+  "task_samples": {
+    "piqa": 1838,
+    "arc_easy": 2376,
+    "arc_challenge": 1172,
+    "boolq": 3270,
+    "hellaswag": 10042,
+    "winogrande": 1267,
+    "openbookqa": 501
+  },
   "tasks": [
     "piqa",
     "arc_easy",

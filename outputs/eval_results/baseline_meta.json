@@ -1,0 +1,24 @@
+{
+  "experiment": "baseline",
+  "display_name": "实验基线",
+  "model_size_gb": 13.48,
+  "samples_per_task": 10000,
+  "tasks": [
+    "piqa",
+    "arc_easy",
+    "arc_challenge",
+    "boolq",
+    "hellaswag",
+    "winogrande",
+    "openbookqa"
+  ],
+  "task_metrics": {
+    "piqa": "acc",
+    "arc_easy": "acc_norm",
+    "arc_challenge": "acc_norm",
+    "boolq": "acc",
+    "hellaswag": "acc_norm",
+    "winogrande": "acc",
+    "openbookqa": "acc_norm"
+  }
+}
